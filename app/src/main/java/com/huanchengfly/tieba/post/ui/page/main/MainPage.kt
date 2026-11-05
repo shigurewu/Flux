@@ -1,0 +1,485 @@
+﻿package com.huanchengfly.tieba.post.ui.page.main
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.EaseInCubic
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
+import androidx.compose.animation.graphics.res.animatedVectorResource
+import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import com.huanchengfly.tieba.post.ui.widgets.compose.RefreshCircleIcon
+import com.huanchengfly.tieba.post.ui.widgets.compose.DockAutoHideTranslate
+import com.huanchengfly.tieba.post.ui.widgets.compose.DockBottomMargin
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import com.huanchengfly.tieba.post.LocalDevicePosture
+import com.huanchengfly.tieba.post.LocalNotificationCountFlow
+import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.arch.BaseComposeActivity.Companion.LocalWindowSizeClass
+import com.huanchengfly.tieba.post.arch.GlobalEvent
+import com.huanchengfly.tieba.post.arch.collectPartialAsState
+import com.huanchengfly.tieba.post.arch.emitGlobalEvent
+import com.huanchengfly.tieba.post.arch.pageViewModel
+import com.huanchengfly.tieba.post.rememberPreferenceAsState
+import com.huanchengfly.tieba.post.ui.common.anim.MotionTokens
+import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
+import com.huanchengfly.tieba.post.ui.common.windowsizeclass.WindowHeightSizeClass
+import com.huanchengfly.tieba.post.ui.common.windowsizeclass.WindowWidthSizeClass
+import com.huanchengfly.tieba.post.ui.page.ProvideNavigator
+import com.huanchengfly.tieba.post.ui.page.main.explore.ExplorePage
+import com.huanchengfly.tieba.post.ui.page.main.home.HomePage
+import com.huanchengfly.tieba.post.ui.page.main.home.HomeUiIntent
+import com.huanchengfly.tieba.post.ui.page.main.home.HomeViewModel
+import com.huanchengfly.tieba.post.ui.page.main.notifications.NotificationsPage
+import com.huanchengfly.tieba.post.ui.page.main.user.UserPage
+import com.huanchengfly.tieba.post.ui.utils.DevicePosture
+import com.huanchengfly.tieba.post.ui.utils.MainNavigationContentPosition
+import com.huanchengfly.tieba.post.ui.utils.MainNavigationType
+import com.huanchengfly.tieba.post.ui.widgets.compose.FloatingDock
+import com.huanchengfly.tieba.post.ui.widgets.compose.MyScaffold
+import com.huanchengfly.tieba.post.ui.widgets.compose.SplashState
+import com.huanchengfly.tieba.post.utils.appPreferences
+import com.ramcosta.composedestinations.annotation.Destination
+import com.ramcosta.composedestinations.annotation.RootNavGraph
+import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+
+@Composable
+private fun NavigationWrapper(
+    currentPosition: Int,
+    onChangePosition: (position: Int) -> Unit,
+    onReselected: (position: Int) -> Unit,
+    navigationItems: ImmutableList<NavigationItem>,
+    navigationType: MainNavigationType,
+    navigationContentPosition: MainNavigationContentPosition,
+    content: @Composable () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(visible = navigationType == MainNavigationType.PERMANENT_NAVIGATION_DRAWER) {
+            NavigationDrawerContent(
+                currentPosition = currentPosition,
+                onChangePosition = onChangePosition,
+                onReselected = onReselected,
+                navigationItems = navigationItems,
+                navigationContentPosition = navigationContentPosition
+            )
+        }
+        AnimatedVisibility(visible = navigationType == MainNavigationType.NAVIGATION_RAIL) {
+            NavigationRail(
+                currentPosition = currentPosition,
+                onChangePosition = onChangePosition,
+                onReselected = onReselected,
+                navigationItems = navigationItems,
+                navigationContentPosition = navigationContentPosition
+            )
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+        ) {
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalAnimationGraphicsApi::class)
+@RootNavGraph(start = true)
+@Destination
+@Composable
+fun MainPage(
+    navigator: DestinationsNavigator,
+    viewModel: MainViewModel = pageViewModel<MainUiIntent, MainViewModel>(emptyList()),
+) {
+    val windowSizeClass = LocalWindowSizeClass.current
+    val account = LocalAccount.current
+    val windowHeightSizeClass by rememberUpdatedState(newValue = windowSizeClass.heightSizeClass)
+    val windowWidthSizeClass by rememberUpdatedState(newValue = windowSizeClass.widthSizeClass)
+    val foldingDevicePosture by LocalDevicePosture.current
+
+    val messageCount by viewModel.uiState.collectPartialAsState(
+        prop1 = MainUiState::messageCount,
+        initial = 0
+    )
+
+    val notificationCountFlow = LocalNotificationCountFlow.current
+    LaunchedEffect(null) {
+        notificationCountFlow.collect {
+            viewModel.send(MainUiIntent.NewMessage.Receive(it))
+        }
+    }
+
+    val hideExplore by rememberPreferenceAsState(
+        key = booleanPreferencesKey("hideExplore"),
+        defaultValue = LocalContext.current.appPreferences.hideExplore
+    )
+    val defaultStart by rememberPreferenceAsState(
+        key = intPreferencesKey("defaultStart"),
+        defaultValue = LocalContext.current.appPreferences.defaultStart
+    )
+    val pageCount by remember {
+        derivedStateOf {
+            if (hideExplore) 3 else 4
+        }
+    }
+    var currentPosition by rememberSaveable {
+        mutableIntStateOf(if (hideExplore && defaultStart > 0) defaultStart - 1 else defaultStart)
+    }
+
+    val onChangePosition: (Int) -> Unit = { currentPosition = it }
+
+    // 启动屏就绪兜底：起始页非首页时（动态/消息/我的），
+    // HomePage 不会组合、无法触发 markReady，此处补位避免启动屏只能等超时退场
+    LaunchedEffect(Unit) {
+        if (currentPosition != 0) {
+            SplashState.markReady()
+        }
+    }
+
+    LaunchedEffect(hideExplore) {
+        if (currentPosition == 3 && hideExplore) {
+            currentPosition = 2
+        }
+    }
+
+    val homeViewModel = if (account != null) {
+        pageViewModel<HomeUiIntent, HomeViewModel>(listOf(HomeUiIntent.Refresh))
+    } else pageViewModel()
+
+    val coroutineScope = rememberCoroutineScope()
+    val themeColors = ExtendedTheme.colors
+    val navigationItems by remember {
+        derivedStateOf {
+            listOfNotNull(
+                NavigationItem(
+                    id = "home",
+                    icon = { AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_animated_rounded_home) },
+                    title = { stringResource(id = R.string.title_main) },
+                    content = {
+                        HomePage(
+                            viewModel = homeViewModel,
+                            canOpenExplore = !LocalContext.current.appPreferences.hideExplore
+                        ) {
+                            onChangePosition(1)
+                        }
+                    }
+                ),
+                if (hideExplore) null
+                else NavigationItem(
+                    id = "explore",
+                    icon = {
+                        AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_animated_toy_fans)
+                    },
+                    // 只有「当前就在动态页且列表不在顶部」时才替换为回顶按钮
+                    altIcon = if (MainTabUiState.exploreAtTop ||
+                        MainTabUiState.currentTabId != "explore"
+                    ) {
+                        null
+                    } else {
+                        { RefreshCircleIcon(spinSignal = MainTabUiState.reselectTick) }
+                    },
+                    title = { stringResource(id = R.string.title_explore) },
+                    content = {
+                        ExplorePage()
+                    }
+                ),
+                NavigationItem(
+                    id = "notification",
+                    icon = {
+                        AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_animated_rounded_notifications)
+                    },
+                    title = { stringResource(id = R.string.title_notifications) },
+                    badge = messageCount > 0,
+                    badgeText = "$messageCount",
+                    onClick = {
+                        viewModel.send(MainUiIntent.NewMessage.Clear)
+                    },
+                    content = {
+                        NotificationsPage()
+                    }
+                ),
+                NavigationItem(
+                    id = "user",
+                    icon = {
+                        AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_animated_rounded_person)
+                    },
+                    title = { stringResource(id = R.string.title_user) },
+                    content = {
+                        UserPage()
+                    }
+                ),
+            ).toImmutableList()
+        }
+    }
+    // hideExplore 变化或进程恢复时 currentPosition 可能短暂越界（如保存了 3 但列表已缩到 3 项），
+    // 复位 LaunchedEffect 要到组合之后才跑；所有读取统一走安全夹取，避免绘制期越界闪退（issue #8）
+    val safeCurrentPosition = currentPosition.coerceIn(0, navigationItems.lastIndex)
+    val navigationType by remember {
+        derivedStateOf {
+            when (windowWidthSizeClass) {
+                WindowWidthSizeClass.Compact -> {
+                    MainNavigationType.BOTTOM_NAVIGATION
+                }
+
+                WindowWidthSizeClass.Medium -> {
+                    MainNavigationType.NAVIGATION_RAIL
+                }
+
+                WindowWidthSizeClass.Expanded -> {
+                    if (foldingDevicePosture is DevicePosture.BookPosture) {
+                        MainNavigationType.NAVIGATION_RAIL
+                    } else {
+                        MainNavigationType.PERMANENT_NAVIGATION_DRAWER
+                    }
+                }
+
+                else -> {
+                    MainNavigationType.BOTTOM_NAVIGATION
+                }
+            }
+        }
+    }
+
+    /**
+     * Content inside Navigation Rail/Drawer can also be positioned at top, bottom or center for
+     * ergonomics and reachability depending upon the height of the device.
+     */
+    val navigationContentPosition by remember {
+        derivedStateOf {
+            when (windowHeightSizeClass) {
+                WindowHeightSizeClass.Compact -> {
+                    MainNavigationContentPosition.TOP
+                }
+
+                WindowHeightSizeClass.Medium,
+                WindowHeightSizeClass.Expanded -> {
+                    MainNavigationContentPosition.CENTER
+                }
+
+                else -> {
+                    MainNavigationContentPosition.TOP
+                }
+            }
+        }
+    }
+    // 再次点击当前标签：既发全局事件，也通过 CompositionLocal 递增 tick，
+    // 页面可直接监听（避免事件转发链断掉时点了没反应）
+    var reselectSignal by remember { mutableStateOf(TabReselectSignal()) }
+    val onReselected: (Int) -> Unit = { position ->
+        val tabId = navigationItems[position.coerceIn(0, navigationItems.lastIndex)].id
+        // 只走 tick 这一条路径，避免同时发 GlobalEvent 导致刷新两次
+        reselectSignal = TabReselectSignal(tabId, reselectSignal.tick + 1)
+        MainTabUiState.reselectTick++
+    }
+    val floatingBottomNav by rememberPreferenceAsState(
+        key = booleanPreferencesKey("floatingBottomNav"),
+        defaultValue = LocalContext.current.appPreferences.floatingBottomNav
+    )
+    // 液态玻璃底栏的采样源:内容层经 layerBackdrop 录制,Dock 从中折射采样
+    val glassBackdropBaseColor = ExtendedTheme.colors.background
+    val glassBackdrop = rememberLayerBackdrop {
+        drawRect(glassBackdropBaseColor)
+        drawContent()
+    }
+    val saveableStateHolder = rememberSaveableStateHolder()
+    // 真悬浮布局:胶囊叠于内容之上,内容 edge-to-edge;经典贴底/Rail 模式沿用 Scaffold 避让
+    val floatingLayout = navigationType == MainNavigationType.BOTTOM_NAVIGATION && floatingBottomNav
+    // M2 Scaffold 不做系统 insets 避让(contentWindowInsets 传的是全 0),悬浮模式下底部
+    // 导航栏区域需在此统一补足:呼吸位 = 胶囊高 + 底边距 + 呼吸(84dp) + 系统导航栏,
+    // 列表末项才能完整滚出胶囊,加载提示胶囊也停在这条线上。
+    val navigationBarsInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // 滚动自动隐藏悬浮底栏：列表上滑（内容下滚）收起、下滑（回滚）唤出（issue #16）
+    val autoHideBottomBar by rememberPreferenceAsState(
+        key = booleanPreferencesKey("auto_hide_bottom_bar"),
+        defaultValue = LocalContext.current.appPreferences.autoHideBottomBar
+    )
+    val dockAutoHide = floatingLayout && autoHideBottomBar
+    var dockHiddenByScroll by remember { mutableStateOf(false) }
+    val dockAutoHideConnection = remember {
+        object : NestedScrollConnection {
+            // 拖拽相位：拖动方向直接判定（onPostScroll 只收未消费的过滚动量，接不到正常滚动）
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < -3f) dockHiddenByScroll = true
+                else if (available.y > 3f) dockHiddenByScroll = false
+                return Offset.Zero
+            }
+
+            // 甩动相位：惯性速度方向判定（fling 不逐帧走 preScroll）
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (available.y < -100f) dockHiddenByScroll = true
+                else if (available.y > 100f) dockHiddenByScroll = false
+                return Velocity.Zero
+            }
+        }
+    }
+    // 切换底部标签时唤出底栏，避免新列表带着隐藏状态出现
+    LaunchedEffect(safeCurrentPosition) {
+        dockHiddenByScroll = false
+        MainTabUiState.currentTabId = navigationItems.getOrNull(safeCurrentPosition)?.id ?: "home"
+    }
+    val density = LocalDensity.current
+    val dockHideTranslatePx = with(density) { (DockAutoHideTranslate + navigationBarsInset).toPx() }
+    val dockHideProgress by animateFloatAsState(
+        targetValue = if (dockHiddenByScroll) 1f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = EaseOutCubic),
+        label = "dockHideProgress"
+    )
+    ProvideNavigator(navigator = navigator) {
+        CompositionLocalProvider(LocalTabReselect provides reselectSignal) {
+        NavigationWrapper(
+            currentPosition = safeCurrentPosition,
+            onChangePosition = onChangePosition,
+            onReselected = onReselected,
+            navigationItems = navigationItems,
+            navigationType = navigationType,
+            navigationContentPosition = navigationContentPosition
+        ) {
+            CompositionLocalProvider(
+                LocalMainBottomInsets provides if (floatingLayout) {
+                    MainBottomBreathing + navigationBarsInset
+                } else 0.dp
+            ) {
+                MyScaffold(
+                    backgroundColor = Color.Transparent,
+                    modifier = Modifier.fillMaxSize(),
+                    // 悬浮模式:bottomBar 槽留空,M2 Scaffold 内容自然 edge-to-edge,
+                    // 底部由各列表的 LocalMainBottomInsets 呼吸位接管
+                    bottomBar = {
+                        AnimatedVisibility(
+                            visible = navigationType == MainNavigationType.BOTTOM_NAVIGATION && !floatingBottomNav
+                        ) {
+                            BottomNavigation(
+                                currentPosition = safeCurrentPosition,
+                                onChangePosition = onChangePosition,
+                                onReselected = onReselected,
+                                navigationItems = navigationItems,
+                                themeColors = themeColors,
+                            )
+                        }
+                    }
+                ) { paddingValues ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (dockAutoHide) {
+                                    Modifier.nestedScroll(dockAutoHideConnection)
+                                } else Modifier
+                            )
+                    ) {
+                        AnimatedContent(
+                            targetState = safeCurrentPosition,
+                            transitionSpec = {
+                                (fadeIn(tween(durationMillis = MotionTokens.DurationNormal, delayMillis = 60, easing = MotionTokens.EasingEnter)) togetherWith
+                                        fadeOut(tween(durationMillis = MotionTokens.DurationExit, easing = MotionTokens.EasingExit)))
+                            },
+                            label = "mainPageContent",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(
+                                    if (floatingLayout) {
+                                        Modifier.layerBackdrop(glassBackdrop)
+                                    } else Modifier
+                                ),
+                        ) { page ->
+                            val safePage = page.coerceIn(0, navigationItems.lastIndex)
+                            Box(modifier = Modifier.padding(paddingValues)) {
+                                saveableStateHolder.SaveableStateProvider(navigationItems[safePage].id) {
+                                    navigationItems[safePage].content()
+                                }
+                            }
+                        }
+                        if (floatingLayout) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = DockBottomMargin + navigationBarsInset)
+                                    .offset {
+                                        IntOffset(0, (dockHideTranslatePx * dockHideProgress).roundToInt())
+                                    }
+                            ) {
+                                FloatingDock(
+                                    currentPosition = safeCurrentPosition,
+                                    onChangePosition = onChangePosition,
+                                    onReselected = onReselected,
+                                    navigationItems = navigationItems,
+                                    backdrop = glassBackdrop,
+                                    themeColors = themeColors,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
+    BackHandler(enabled = currentPosition != 0) {
+        currentPosition = 0
+    }
+}
+
+
+
+
+
+
+
+
+

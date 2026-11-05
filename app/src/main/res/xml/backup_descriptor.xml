@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content xmlns:tools="http://schemas.android.com/tools">
+    <exclude
+        domain="sharedpref"
+        path="crash.xml" />
+    <exclude
+        domain="file"
+        path="error"
+        tools:ignore="FullBackupContent" />
+    <!-- 账号凭据（BDUSS/stoken）与浏览记录不允许被 adb backup 带走 -->
+    <exclude
+        domain="database"
+        path="." />
+    <exclude
+        domain="file"
+        path="." />
+    <exclude
+        domain="sharedpref"
+        path="." />
+</full-backup-content>

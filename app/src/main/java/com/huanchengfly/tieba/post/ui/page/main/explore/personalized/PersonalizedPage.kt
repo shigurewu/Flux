@@ -1,0 +1,446 @@
+﻿package com.huanchengfly.tieba.post.ui.page.main.explore.personalized
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.Icon
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.api.models.protos.ThreadInfo
+import com.huanchengfly.tieba.post.api.models.protos.User
+import com.huanchengfly.tieba.post.api.models.protos.personalized.DislikeReason
+import com.huanchengfly.tieba.post.arch.CommonUiEvent.ScrollToTop.bindScrollToTopEvent
+import com.huanchengfly.tieba.post.arch.GlobalEvent
+import com.huanchengfly.tieba.post.arch.ImmutableHolder
+import com.huanchengfly.tieba.post.arch.collectPartialAsState
+import com.huanchengfly.tieba.post.arch.onEvent
+import com.huanchengfly.tieba.post.arch.onGlobalEvent
+import com.huanchengfly.tieba.post.arch.pageViewModel
+import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
+import com.huanchengfly.tieba.post.ui.page.main.LocalTabReselect
+import com.huanchengfly.tieba.post.ui.page.main.MainTabUiState
+import com.huanchengfly.tieba.post.ui.page.main.LocalMainBottomInsets
+import com.huanchengfly.tieba.post.ui.common.theme.compose.pullRefreshIndicator
+import com.huanchengfly.tieba.post.ui.models.ThreadItemData
+import com.huanchengfly.tieba.post.ui.page.LocalNavigator
+import com.huanchengfly.tieba.post.ui.page.destinations.ForumPageDestination
+import com.huanchengfly.tieba.post.ui.page.destinations.ThreadPageDestination
+import com.huanchengfly.tieba.post.ui.page.destinations.UserProfilePageDestination
+import com.huanchengfly.tieba.post.ui.widgets.compose.BlockTip
+import com.huanchengfly.tieba.post.ui.widgets.compose.GlassRefreshIndicator
+import com.huanchengfly.tieba.post.ui.widgets.compose.glassPullRefresh
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberGlassPullRefreshState
+import com.huanchengfly.tieba.post.ui.widgets.compose.BlockableContent
+import com.huanchengfly.tieba.post.ui.widgets.compose.Container
+import com.huanchengfly.tieba.post.ui.widgets.compose.ErrorScreen
+import com.huanchengfly.tieba.post.ui.widgets.compose.FeedCard
+import com.huanchengfly.tieba.post.ui.widgets.compose.feedCardListSpacing
+import com.huanchengfly.tieba.post.ui.widgets.compose.LazyLoad
+import com.huanchengfly.tieba.post.ui.widgets.compose.LoadMoreLayout
+import com.huanchengfly.tieba.post.ui.widgets.compose.MyLazyColumn
+import com.huanchengfly.tieba.post.ui.widgets.compose.SplashState
+import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreen
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterialApi::class)
+@Composable
+fun PersonalizedPage(
+    viewModel: PersonalizedViewModel = pageViewModel()
+) {
+    LazyLoad(loaded = viewModel.initialized) {
+        viewModel.send(PersonalizedUiIntent.Refresh)
+        viewModel.initialized = true
+    }
+    val navigator = LocalNavigator.current
+    val isRefreshing by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::isRefreshing,
+        initial = false
+    )
+    val isLoadingMore by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::isLoadingMore,
+        initial = false
+    )
+    val currentPage by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::currentPage,
+        initial = 1
+    )
+    val data by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::data,
+        initial = persistentListOf()
+    )
+    val error by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::error,
+        initial = null
+    )
+    val refreshPosition by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::refreshPosition,
+        initial = 0
+    )
+    val hiddenThreadIds by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::hiddenThreadIds,
+        initial = persistentListOf()
+    )
+    val pullRefreshState = rememberGlassPullRefreshState(
+        refreshing = isRefreshing,
+        onRefresh = { viewModel.send(PersonalizedUiIntent.Refresh) }
+    )
+    val lazyListState = rememberLazyListState()
+    viewModel.bindScrollToTopEvent(lazyListState = lazyListState)
+    val isEmpty by remember {
+        derivedStateOf {
+            data.isEmpty()
+        }
+    }
+    val isError by remember {
+        derivedStateOf {
+            error != null
+        }
+    }
+    var refreshCount by remember {
+        mutableIntStateOf(0)
+    }
+    var showRefreshTip by remember {
+        mutableStateOf(false)
+    }
+
+    onGlobalEvent<GlobalEvent.Refresh>(
+        filter = { it.key == "personalized" }
+    ) {
+        if(!isRefreshing) viewModel.send(PersonalizedUiIntent.Refresh)
+    }
+
+    // 点击底栏「动态」：先平滑回到顶部，再触发一次刷新（与下拉共用同一刷新状态）
+    val tabReselect = LocalTabReselect.current
+    LaunchedEffect(tabReselect.tick) {
+        if (tabReselect.tick > 0 && tabReselect.tabId == "explore") {
+            if (isRefreshing) return@LaunchedEffect
+            val notAtTop = lazyListState.firstVisibleItemIndex > 0 ||
+                    lazyListState.firstVisibleItemScrollOffset > 0
+            if (notAtTop) {
+                // 等滚动结束再发请求，避免「滚到一半就开始刷新」
+                lazyListState.animateScrollToItem(0)
+            }
+            viewModel.send(PersonalizedUiIntent.Refresh)
+        }
+    }
+
+    // 把「是否在顶部」同步给底栏，决定显示普通图标还是圆圈刷新图标
+    LaunchedEffect(lazyListState) {
+        snapshotFlow {
+            lazyListState.firstVisibleItemIndex == 0 &&
+                    lazyListState.firstVisibleItemScrollOffset == 0
+        }.collect { MainTabUiState.exploreAtTop = it }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { MainTabUiState.exploreAtTop = true }
+    }
+    viewModel.onEvent<PersonalizedUiEvent.RefreshSuccess> {
+        refreshCount = it.count
+        showRefreshTip = true
+    }
+
+    // 启动屏就绪信号：动态页作为启动起始页时首页不会组合，
+    // 以动态首屏数据就绪作为启动屏退场信号
+    LaunchedEffect(isRefreshing, data) {
+        if (!isRefreshing && data.isNotEmpty()) {
+            SplashState.markReady()
+        }
+    }
+
+    if (showRefreshTip) {
+        LaunchedEffect(data) {
+            launch {
+                delay(20)
+                lazyListState.scrollToItem(0, 0)
+            }
+            delay(2000)
+            showRefreshTip = false
+        }
+    }
+//    if (lazyListState.isScrollInProgress) {
+//        DisposableEffect(Unit) {
+//            PauseLoadWhenScrollingDrawableDecodeInterceptor.scrolling = true
+//            onDispose {
+//                PauseLoadWhenScrollingDrawableDecodeInterceptor.scrolling = false
+//            }
+//        }
+//    }
+    StateScreen(
+        modifier = Modifier.fillMaxSize(),
+        isEmpty = isEmpty,
+        isError = isError,
+        isLoading = isRefreshing,
+        onReload = { viewModel.send(PersonalizedUiIntent.Refresh) },
+        errorScreen = {
+            error?.let {
+                ErrorScreen(
+                    error = it.get()
+                )
+            }
+        }
+    ) {
+        Box(modifier = Modifier.glassPullRefresh(pullRefreshState)) {
+            LoadMoreLayout(
+                isLoading = isLoadingMore,
+                onLoadMore = { viewModel.send(PersonalizedUiIntent.LoadMore(currentPage + 1)) },
+                loadEnd = false,
+                lazyListState = lazyListState,
+                isEmpty = data.isEmpty(),
+                // 真悬浮底栏胶囊浮于内容之上,加载提示胶囊需停在呼吸位上(经典贴底模式为 0)
+                indicatorBottomInset = LocalMainBottomInsets.current,
+            ) {
+                FeedList(
+                    state = lazyListState,
+                    dataProvider = { data },
+                    refreshPositionProvider = { refreshPosition },
+                    hiddenThreadIdsProvider = { hiddenThreadIds },
+                    onItemClick = {
+                        navigator.navigate(
+                            ThreadPageDestination(
+                                it.id,
+                                it.forumId,
+                                threadInfo = it
+                            )
+                        )
+                    },
+                    onItemReplyClick = {
+                        navigator.navigate(
+                            ThreadPageDestination(
+                                it.id,
+                                it.forumId,
+                                scrollToReply = true
+                            )
+                        )
+                    },
+                    onAgree = {
+                        viewModel.send(
+                            PersonalizedUiIntent.Agree(
+                                it.threadId,
+                                it.firstPostId,
+                                it.agree?.hasAgree ?: 0
+                            )
+                        )
+                    },
+                    onDislike = { item, clickTime, reasons ->
+                        viewModel.send(
+                            PersonalizedUiIntent.Dislike(
+                                item.forumInfo?.id ?: 0,
+                                item.threadId,
+                                reasons,
+                                clickTime
+                            )
+                        )
+                    },
+                    onRefresh = { viewModel.send(PersonalizedUiIntent.Refresh) },
+                    onOpenForum = { navigator.navigate(ForumPageDestination(it)) },
+                    onClickUser = { navigator.navigate(UserProfilePageDestination(it.id)) }
+                )
+            }
+
+            GlassRefreshIndicator(
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+
+            AnimatedVisibility(
+                visible = showRefreshTip,
+                enter = fadeIn(tween(200, easing = LinearOutSlowInEasing)) +
+                        slideInVertically(tween(250, easing = FastOutSlowInEasing)) { -it / 2 },
+                exit = fadeOut(tween(150, easing = FastOutLinearInEasing)) +
+                        slideOutVertically(tween(200, easing = FastOutSlowInEasing)) { -it / 2 },
+                modifier = Modifier.align(Alignment.TopCenter)
+            ) {
+                RefreshTip(refreshCount = refreshCount)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.RefreshTip(refreshCount: Int) {
+    Box(
+        modifier = Modifier
+            .padding(top = 72.dp)
+            .shadow(2.dp, RoundedCornerShape(100))
+            .clip(RoundedCornerShape(100))
+            .background(
+                color = ExtendedTheme.colors.primary,
+                shape = RoundedCornerShape(100)
+            )
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .align(Alignment.TopCenter)
+    ) {
+        Text(
+            text = stringResource(id = R.string.toast_feed_refresh, refreshCount),
+            color = ExtendedTheme.colors.onAccent
+        )
+    }
+}
+
+@Composable
+private fun FeedList(
+    state: LazyListState,
+    dataProvider: () -> ImmutableList<ThreadItemData>,
+    refreshPositionProvider: () -> Int,
+    hiddenThreadIdsProvider: () -> ImmutableList<Long>,
+    onItemClick: (ThreadInfo) -> Unit,
+    onItemReplyClick: (ThreadInfo) -> Unit,
+    onAgree: (ThreadInfo) -> Unit,
+    onDislike: (ThreadInfo, Long, ImmutableList<ImmutableHolder<DislikeReason>>) -> Unit,
+    onRefresh: () -> Unit,
+    onOpenForum: (forumName: String) -> Unit = {},
+    onClickUser: (User) -> Unit = {},
+) {
+    val data = dataProvider()
+    val refreshPosition = refreshPositionProvider()
+    val hiddenThreadIds = hiddenThreadIdsProvider()
+
+    MyLazyColumn(
+        state = state,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(feedCardListSpacing()),
+        contentPadding = PaddingValues(top = 4.dp, bottom = LocalMainBottomInsets.current),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        itemsIndexed(
+            items = data,
+            key = { _, (item) -> "${item.get { id }}" },
+            contentType = { _, (item) ->
+                when {
+                    item.get { videoInfo } != null -> "Video"
+                    item.get { media }.size == 1 -> "SingleMedia"
+                    item.get { media }.size > 1 -> "MultiMedia"
+                    else -> "PlainText"
+                }
+            }
+        ) { index, (item, blocked, personalized, hidden) ->
+            val isHidden =
+                remember(
+                    hiddenThreadIds,
+                    item,
+                    hidden
+                ) { hiddenThreadIds.contains(item.get { threadId }) || hidden }
+            val isRefreshPosition =
+                remember(index, refreshPosition) { index + 1 == refreshPosition }
+            Container {
+                AnimatedVisibility(
+                    visible = !isHidden,
+                    enter = EnterTransition.None,
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        BlockableContent(
+                            blocked = blocked,
+                            blockedTip = { BlockTip(text = { Text(text = stringResource(id = R.string.tip_blocked_thread)) }) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp, horizontal = 10.dp)
+                        ) {
+                            Column {
+                                FeedCard(
+                                    item = item,
+                                    onClick = onItemClick,
+                                    onClickReply = onItemReplyClick,
+                                    onAgree = onAgree,
+                                    onClickForum = remember {
+                                        {
+                                            onOpenForum(it.name)
+                                        }
+                                    },
+                                    onClickUser = onClickUser,
+                                ) {
+                                    if (personalized != null) {
+                                        Dislike(
+                                            personalized = personalized,
+                                            onDislike = { clickTime, reasons ->
+                                                onDislike(item.get(), clickTime, reasons)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (isRefreshPosition) {
+                            RefreshTip(onRefresh)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RefreshTip(
+    onRefresh: () -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onRefresh)
+            .padding(8.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Refresh,
+            contentDescription = null
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = stringResource(id = R.string.tip_refresh),
+            style = MaterialTheme.typography.subtitle1
+        )
+    }
+}
+
+

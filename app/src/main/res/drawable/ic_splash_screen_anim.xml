@@ -1,0 +1,607 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="160dp"
+            android:height="160dp"
+            android:viewportWidth="108"
+            android:viewportHeight="108">
+
+            <!-- 1. 物理底圆：160dp 满态纯净圆锚定，零跳闪 -->
+            <group
+                android:name="circle_group"
+                android:pivotX="54"
+                android:pivotY="54">
+                <path
+                    android:name="bg_circle"
+                    android:fillColor="#F4F7FC"
+                    android:pathData="M 54,0 A 54,54 0 1,0 54,108 A 54,54 0 1,0 54,0 Z" />
+            </group>
+
+            <!-- 2. 冰川天蓝液态水滴 (#42A5F5) - 破空飞入与碰撞形变 -->
+            <group
+                android:name="waterdrop_sky_group"
+                android:pivotX="48.18"
+                android:pivotY="49.64">
+                <path
+                    android:name="waterdrop_sky"
+                    android:fillColor="#42A5F5"
+                    android:fillAlpha="0.0"
+                    android:pathData="M 48.18,31.29 A 18.35,18.35 0 1,1 48.17,31.29 Z" />
+            </group>
+
+            <!-- 3. 贴吧经典深蓝水滴 (#1565C0) - 对冲汇聚与流体交融 -->
+            <group
+                android:name="waterdrop_deep_group"
+                android:pivotX="60.09"
+                android:pivotY="58.36">
+                <path
+                    android:name="waterdrop_deep"
+                    android:fillColor="#1565C0"
+                    android:fillAlpha="0.0"
+                    android:pathData="M 60.09,39.66 A 18.70,18.70 0 1,1 60.08,39.66 Z" />
+            </group>
+
+            <!-- 4. 官方真身纯白「贴」字 (三层立体微环境阴影 + 破水而出飞腾) -->
+            <group
+                android:name="tie_char_group"
+                android:pivotX="54"
+                android:pivotY="54">
+
+                <!-- 阴影 3: 环境弥散微光层 (沉降 1.5dp) -->
+                <group android:translateY="1.5">
+                    <path
+                        android:name="tie_shadow_3"
+                        android:fillColor="#061432"
+                        android:fillAlpha="0.0"
+                        android:fillType="evenOdd"
+                        android:pathData="M 43.18 42.71 Q 42.62 42.72 42.62 43.27 L 42.55 62.42 Q 42.54 62.55 42.47 62.66 L 42.45 62.68 Q 42.38 62.79 42.38 62.92 L 42.38 63.57 Q 42.38 63.69 42.30 63.80 L 42.28 63.83 Q 42.21 63.93 42.19 64.05 L 42.04 64.87 L 41.54 65.88 L 39.94 67.64 Q 39.88 67.71 39.80 67.75 L 38.36 68.56 L 37.43 68.87 Q 37.35 68.89 37.26 68.89 L 36.89 68.89 Q 36.77 68.89 36.66 68.97 L 36.63 68.98 Q 36.53 69.06 36.40 69.07 L 36.16 69.09 Q 35.85 69.12 35.85 69.42 L 35.84 71.37 Q 35.84 71.91 36.38 71.92 L 39.48 71.99 Q 39.64 72.00 39.78 71.91 L 40.05 71.75 Q 40.17 71.68 40.30 71.66 L 40.36 71.66 Q 40.49 71.66 40.60 71.59 L 41.65 70.99 L 42.16 70.48 Q 42.25 70.40 42.36 70.36 L 42.39 70.36 Q 42.51 70.31 42.59 70.23 L 43.72 69.10 Q 43.80 69.02 43.83 68.90 L 43.85 68.87 Q 43.88 68.76 43.98 68.69 L 44.17 68.56 Q 44.40 68.40 44.59 68.60 L 46.34 70.48 L 48.52 71.82 L 48.95 71.96 Q 49.04 72.00 49.13 71.99 L 52.06 71.98 Q 52.60 71.98 52.61 71.44 L 52.66 69.35 Q 52.66 69.12 52.43 69.09 L 52.28 69.07 Q 52.15 69.06 52.04 68.98 L 52.02 68.97 Q 51.92 68.89 51.78 68.89 L 51.42 68.89 Q 51.33 68.89 51.24 68.87 L 50.32 68.56 L 48.79 67.71 L 47.48 66.39 L 46.63 64.87 L 46.33 63.94 Q 46.30 63.86 46.30 63.77 L 46.30 63.41 Q 46.30 63.28 46.22 63.17 L 46.21 63.15 Q 46.13 63.04 46.13 62.91 L 46.13 42.89 Q 46.13 42.82 46.09 42.77 L 46.07 42.75 Q 46.02 42.71 45.95 42.71 Z M 38.32 37.35 L 37.24 38.43 Q 37.18 38.48 37.15 38.55 L 36.23 40.24 Q 36.16 40.37 36.16 40.50 L 36.16 40.66 Q 36.16 40.78 36.09 40.89 L 36.07 40.91 Q 36.00 41.02 36.00 41.15 L 36.00 41.80 Q 36.00 41.93 35.92 42.03 L 35.91 42.06 Q 35.83 42.17 35.83 42.29 L 35.85 62.39 Q 35.85 62.93 36.40 62.94 L 39.40 62.99 Q 39.47 62.99 39.53 62.94 L 39.53 62.93 Q 39.59 62.88 39.59 62.81 L 39.59 41.94 Q 39.59 41.84 39.62 41.74 L 39.89 41.07 Q 39.94 40.97 40.01 40.89 L 40.55 40.35 Q 40.61 40.28 40.69 40.24 L 41.23 39.97 Q 41.35 39.92 41.47 39.92 L 48.89 39.92 Q 48.97 39.92 49.02 39.97 L 49.04 39.98 Q 49.09 40.04 49.09 40.12 L 49.09 62.81 Q 49.09 62.88 49.14 62.93 L 49.15 62.94 Q 49.20 62.99 49.28 62.99 L 52.07 62.97 Q 52.62 62.97 52.62 62.42 L 52.66 36.77 Q 52.66 36.22 52.11 36.22 L 41.47 36.16 Q 41.35 36.16 41.24 36.23 L 41.22 36.25 Q 41.11 36.32 40.98 36.32 L 40.62 36.32 Q 40.53 36.32 40.44 36.35 L 39.51 36.66 Z M 59.42 36.00 Q 59.35 36.00 59.30 36.05 L 59.29 36.06 Q 59.23 36.11 59.23 36.18 L 59.23 51.89 Q 59.23 52.08 59.11 52.21 L 59.08 52.23 Q 58.95 52.37 58.77 52.37 L 55.47 52.41 Q 55.35 52.41 55.41 52.52 L 55.42 52.55 Q 55.47 52.65 55.47 52.77 L 55.47 71.81 Q 55.47 71.88 55.52 71.93 L 55.54 71.94 Q 55.59 72.00 55.65 72.00 L 68.92 72.00 Q 69.10 72.00 69.24 71.89 L 70.33 71.13 L 71.13 70.16 L 71.77 69.05 Q 71.82 68.96 71.84 68.87 L 71.97 68.14 Q 72.00 68.02 72.06 67.92 L 72.09 67.90 Q 72.16 67.79 72.16 67.66 L 72.16 52.55 Q 72.16 52.48 72.11 52.43 L 72.09 52.41 Q 72.05 52.37 71.98 52.37 L 63.17 52.32 Q 63.03 52.32 62.94 52.21 L 62.92 52.19 Q 62.83 52.08 62.83 51.94 L 62.83 44.15 Q 62.83 43.97 62.96 43.83 L 62.99 43.81 Q 63.11 43.68 63.30 43.68 L 71.53 43.67 Q 72.07 43.67 72.09 43.13 L 72.16 40.11 Q 72.16 40.04 72.11 39.98 L 72.09 39.98 Q 72.05 39.92 71.98 39.92 L 63.30 39.92 Q 63.11 39.92 62.99 39.80 L 62.96 39.77 Q 62.83 39.64 62.83 39.46 L 62.83 36.40 Q 62.83 36.28 62.88 36.18 L 62.89 36.14 Q 62.94 36.02 62.81 36.02 Z M 59.13 56.53 Q 59.14 55.97 59.69 55.98 L 67.99 56.02 Q 68.55 56.02 68.55 56.58 L 68.57 66.86 Q 68.57 66.97 68.53 67.07 L 68.24 67.77 Q 68.20 67.87 68.12 67.95 L 67.43 68.63 Q 67.35 68.71 67.25 68.75 L 66.58 69.02 Q 66.48 69.06 66.37 69.05 L 59.64 68.99 Q 59.08 68.98 59.09 68.44 Z" />
+                </group>
+
+                <!-- 阴影 2: 核心悬浮落差层 (沉降 0.9dp) -->
+                <group android:translateY="0.9">
+                    <path
+                        android:name="tie_shadow_2"
+                        android:fillColor="#081C44"
+                        android:fillAlpha="0.0"
+                        android:fillType="evenOdd"
+                        android:pathData="M 43.18 42.71 Q 42.62 42.72 42.62 43.27 L 42.55 62.42 Q 42.54 62.55 42.47 62.66 L 42.45 62.68 Q 42.38 62.79 42.38 62.92 L 42.38 63.57 Q 42.38 63.69 42.30 63.80 L 42.28 63.83 Q 42.21 63.93 42.19 64.05 L 42.04 64.87 L 41.54 65.88 L 39.94 67.64 Q 39.88 67.71 39.80 67.75 L 38.36 68.56 L 37.43 68.87 Q 37.35 68.89 37.26 68.89 L 36.89 68.89 Q 36.77 68.89 36.66 68.97 L 36.63 68.98 Q 36.53 69.06 36.40 69.07 L 36.16 69.09 Q 35.85 69.12 35.85 69.42 L 35.84 71.37 Q 35.84 71.91 36.38 71.92 L 39.48 71.99 Q 39.64 72.00 39.78 71.91 L 40.05 71.75 Q 40.17 71.68 40.30 71.66 L 40.36 71.66 Q 40.49 71.66 40.60 71.59 L 41.65 70.99 L 42.16 70.48 Q 42.25 70.40 42.36 70.36 L 42.39 70.36 Q 42.51 70.31 42.59 70.23 L 43.72 69.10 Q 43.80 69.02 43.83 68.90 L 43.85 68.87 Q 43.88 68.76 43.98 68.69 L 44.17 68.56 Q 44.40 68.40 44.59 68.60 L 46.34 70.48 L 48.52 71.82 L 48.95 71.96 Q 49.04 72.00 49.13 71.99 L 52.06 71.98 Q 52.60 71.98 52.61 71.44 L 52.66 69.35 Q 52.66 69.12 52.43 69.09 L 52.28 69.07 Q 52.15 69.06 52.04 68.98 L 52.02 68.97 Q 51.92 68.89 51.78 68.89 L 51.42 68.89 Q 51.33 68.89 51.24 68.87 L 50.32 68.56 L 48.79 67.71 L 47.48 66.39 L 46.63 64.87 L 46.33 63.94 Q 46.30 63.86 46.30 63.77 L 46.30 63.41 Q 46.30 63.28 46.22 63.17 L 46.21 63.15 Q 46.13 63.04 46.13 62.91 L 46.13 42.89 Q 46.13 42.82 46.09 42.77 L 46.07 42.75 Q 46.02 42.71 45.95 42.71 Z M 38.32 37.35 L 37.24 38.43 Q 37.18 38.48 37.15 38.55 L 36.23 40.24 Q 36.16 40.37 36.16 40.50 L 36.16 40.66 Q 36.16 40.78 36.09 40.89 L 36.07 40.91 Q 36.00 41.02 36.00 41.15 L 36.00 41.80 Q 36.00 41.93 35.92 42.03 L 35.91 42.06 Q 35.83 42.17 35.83 42.29 L 35.85 62.39 Q 35.85 62.93 36.40 62.94 L 39.40 62.99 Q 39.47 62.99 39.53 62.94 L 39.53 62.93 Q 39.59 62.88 39.59 62.81 L 39.59 41.94 Q 39.59 41.84 39.62 41.74 L 39.89 41.07 Q 39.94 40.97 40.01 40.89 L 40.55 40.35 Q 40.61 40.28 40.69 40.24 L 41.23 39.97 Q 41.35 39.92 41.47 39.92 L 48.89 39.92 Q 48.97 39.92 49.02 39.97 L 49.04 39.98 Q 49.09 40.04 49.09 40.12 L 49.09 62.81 Q 49.09 62.88 49.14 62.93 L 49.15 62.94 Q 49.20 62.99 49.28 62.99 L 52.07 62.97 Q 52.62 62.97 52.62 62.42 L 52.66 36.77 Q 52.66 36.22 52.11 36.22 L 41.47 36.16 Q 41.35 36.16 41.24 36.23 L 41.22 36.25 Q 41.11 36.32 40.98 36.32 L 40.62 36.32 Q 40.53 36.32 40.44 36.35 L 39.51 36.66 Z M 59.42 36.00 Q 59.35 36.00 59.30 36.05 L 59.29 36.06 Q 59.23 36.11 59.23 36.18 L 59.23 51.89 Q 59.23 52.08 59.11 52.21 L 59.08 52.23 Q 58.95 52.37 58.77 52.37 L 55.47 52.41 Q 55.35 52.41 55.41 52.52 L 55.42 52.55 Q 55.47 52.65 55.47 52.77 L 55.47 71.81 Q 55.47 71.88 55.52 71.93 L 55.54 71.94 Q 55.59 72.00 55.65 72.00 L 68.92 72.00 Q 69.10 72.00 69.24 71.89 L 70.33 71.13 L 71.13 70.16 L 71.77 69.05 Q 71.82 68.96 71.84 68.87 L 71.97 68.14 Q 72.00 68.02 72.06 67.92 L 72.09 67.90 Q 72.16 67.79 72.16 67.66 L 72.16 52.55 Q 72.16 52.48 72.11 52.43 L 72.09 52.41 Q 72.05 52.37 71.98 52.37 L 63.17 52.32 Q 63.03 52.32 62.94 52.21 L 62.92 52.19 Q 62.83 52.08 62.83 51.94 L 62.83 44.15 Q 62.83 43.97 62.96 43.83 L 62.99 43.81 Q 63.11 43.68 63.30 43.68 L 71.53 43.67 Q 72.07 43.67 72.09 43.13 L 72.16 40.11 Q 72.16 40.04 72.11 39.98 L 72.09 39.98 Q 72.05 39.92 71.98 39.92 L 63.30 39.92 Q 63.11 39.92 62.99 39.80 L 62.96 39.77 Q 62.83 39.64 62.83 39.46 L 62.83 36.40 Q 62.83 36.28 62.88 36.18 L 62.89 36.14 Q 62.94 36.02 62.81 36.02 Z M 59.13 56.53 Q 59.14 55.97 59.69 55.98 L 67.99 56.02 Q 68.55 56.02 68.55 56.58 L 68.57 66.86 Q 68.57 66.97 68.53 67.07 L 68.24 67.77 Q 68.20 67.87 68.12 67.95 L 67.43 68.63 Q 67.35 68.71 67.25 68.75 L 66.58 69.02 Q 66.48 69.06 66.37 69.05 L 59.64 68.99 Q 59.08 68.98 59.09 68.44 Z" />
+                </group>
+
+                <!-- 阴影 1: 紧密接触闭塞微阴影 (沉降 0.4dp) -->
+                <group android:translateY="0.4">
+                    <path
+                        android:name="tie_shadow_1"
+                        android:fillColor="#0C285C"
+                        android:fillAlpha="0.0"
+                        android:fillType="evenOdd"
+                        android:pathData="M 43.18 42.71 Q 42.62 42.72 42.62 43.27 L 42.55 62.42 Q 42.54 62.55 42.47 62.66 L 42.45 62.68 Q 42.38 62.79 42.38 62.92 L 42.38 63.57 Q 42.38 63.69 42.30 63.80 L 42.28 63.83 Q 42.21 63.93 42.19 64.05 L 42.04 64.87 L 41.54 65.88 L 39.94 67.64 Q 39.88 67.71 39.80 67.75 L 38.36 68.56 L 37.43 68.87 Q 37.35 68.89 37.26 68.89 L 36.89 68.89 Q 36.77 68.89 36.66 68.97 L 36.63 68.98 Q 36.53 69.06 36.40 69.07 L 36.16 69.09 Q 35.85 69.12 35.85 69.42 L 35.84 71.37 Q 35.84 71.91 36.38 71.92 L 39.48 71.99 Q 39.64 72.00 39.78 71.91 L 40.05 71.75 Q 40.17 71.68 40.30 71.66 L 40.36 71.66 Q 40.49 71.66 40.60 71.59 L 41.65 70.99 L 42.16 70.48 Q 42.25 70.40 42.36 70.36 L 42.39 70.36 Q 42.51 70.31 42.59 70.23 L 43.72 69.10 Q 43.80 69.02 43.83 68.90 L 43.85 68.87 Q 43.88 68.76 43.98 68.69 L 44.17 68.56 Q 44.40 68.40 44.59 68.60 L 46.34 70.48 L 48.52 71.82 L 48.95 71.96 Q 49.04 72.00 49.13 71.99 L 52.06 71.98 Q 52.60 71.98 52.61 71.44 L 52.66 69.35 Q 52.66 69.12 52.43 69.09 L 52.28 69.07 Q 52.15 69.06 52.04 68.98 L 52.02 68.97 Q 51.92 68.89 51.78 68.89 L 51.42 68.89 Q 51.33 68.89 51.24 68.87 L 50.32 68.56 L 48.79 67.71 L 47.48 66.39 L 46.63 64.87 L 46.33 63.94 Q 46.30 63.86 46.30 63.77 L 46.30 63.41 Q 46.30 63.28 46.22 63.17 L 46.21 63.15 Q 46.13 63.04 46.13 62.91 L 46.13 42.89 Q 46.13 42.82 46.09 42.77 L 46.07 42.75 Q 46.02 42.71 45.95 42.71 Z M 38.32 37.35 L 37.24 38.43 Q 37.18 38.48 37.15 38.55 L 36.23 40.24 Q 36.16 40.37 36.16 40.50 L 36.16 40.66 Q 36.16 40.78 36.09 40.89 L 36.07 40.91 Q 36.00 41.02 36.00 41.15 L 36.00 41.80 Q 36.00 41.93 35.92 42.03 L 35.91 42.06 Q 35.83 42.17 35.83 42.29 L 35.85 62.39 Q 35.85 62.93 36.40 62.94 L 39.40 62.99 Q 39.47 62.99 39.53 62.94 L 39.53 62.93 Q 39.59 62.88 39.59 62.81 L 39.59 41.94 Q 39.59 41.84 39.62 41.74 L 39.89 41.07 Q 39.94 40.97 40.01 40.89 L 40.55 40.35 Q 40.61 40.28 40.69 40.24 L 41.23 39.97 Q 41.35 39.92 41.47 39.92 L 48.89 39.92 Q 48.97 39.92 49.02 39.97 L 49.04 39.98 Q 49.09 40.04 49.09 40.12 L 49.09 62.81 Q 49.09 62.88 49.14 62.93 L 49.15 62.94 Q 49.20 62.99 49.28 62.99 L 52.07 62.97 Q 52.62 62.97 52.62 62.42 L 52.66 36.77 Q 52.66 36.22 52.11 36.22 L 41.47 36.16 Q 41.35 36.16 41.24 36.23 L 41.22 36.25 Q 41.11 36.32 40.98 36.32 L 40.62 36.32 Q 40.53 36.32 40.44 36.35 L 39.51 36.66 Z M 59.42 36.00 Q 59.35 36.00 59.30 36.05 L 59.29 36.06 Q 59.23 36.11 59.23 36.18 L 59.23 51.89 Q 59.23 52.08 59.11 52.21 L 59.08 52.23 Q 58.95 52.37 58.77 52.37 L 55.47 52.41 Q 55.35 52.41 55.41 52.52 L 55.42 52.55 Q 55.47 52.65 55.47 52.77 L 55.47 71.81 Q 55.47 71.88 55.52 71.93 L 55.54 71.94 Q 55.59 72.00 55.65 72.00 L 68.92 72.00 Q 69.10 72.00 69.24 71.89 L 70.33 71.13 L 71.13 70.16 L 71.77 69.05 Q 71.82 68.96 71.84 68.87 L 71.97 68.14 Q 72.00 68.02 72.06 67.92 L 72.09 67.90 Q 72.16 67.79 72.16 67.66 L 72.16 52.55 Q 72.16 52.48 72.11 52.43 L 72.09 52.41 Q 72.05 52.37 71.98 52.37 L 63.17 52.32 Q 63.03 52.32 62.94 52.21 L 62.92 52.19 Q 62.83 52.08 62.83 51.94 L 62.83 44.15 Q 62.83 43.97 62.96 43.83 L 62.99 43.81 Q 63.11 43.68 63.30 43.68 L 71.53 43.67 Q 72.07 43.67 72.09 43.13 L 72.16 40.11 Q 72.16 40.04 72.11 39.98 L 72.09 39.98 Q 72.05 39.92 71.98 39.92 L 63.30 39.92 Q 63.11 39.92 62.99 39.80 L 62.96 39.77 Q 62.83 39.64 62.83 39.46 L 62.83 36.40 Q 62.83 36.28 62.88 36.18 L 62.89 36.14 Q 62.94 36.02 62.81 36.02 Z M 59.13 56.53 Q 59.14 55.97 59.69 55.98 L 67.99 56.02 Q 68.55 56.02 68.55 56.58 L 68.57 66.86 Q 68.57 66.97 68.53 67.07 L 68.24 67.77 Q 68.20 67.87 68.12 67.95 L 67.43 68.63 Q 67.35 68.71 67.25 68.75 L 66.58 69.02 Q 66.48 69.06 66.37 69.05 L 59.64 68.99 Q 59.08 68.98 59.09 68.44 Z" />
+                </group>
+
+                <!-- 核心官方纯白贴字真身 -->
+                <path
+                    android:name="tie_char"
+                    android:fillColor="#FFFFFF"
+                    android:fillAlpha="0.0"
+                    android:fillType="evenOdd"
+                    android:pathData="M 43.18 42.71 Q 42.62 42.72 42.62 43.27 L 42.55 62.42 Q 42.54 62.55 42.47 62.66 L 42.45 62.68 Q 42.38 62.79 42.38 62.92 L 42.38 63.57 Q 42.38 63.69 42.30 63.80 L 42.28 63.83 Q 42.21 63.93 42.19 64.05 L 42.04 64.87 L 41.54 65.88 L 39.94 67.64 Q 39.88 67.71 39.80 67.75 L 38.36 68.56 L 37.43 68.87 Q 37.35 68.89 37.26 68.89 L 36.89 68.89 Q 36.77 68.89 36.66 68.97 L 36.63 68.98 Q 36.53 69.06 36.40 69.07 L 36.16 69.09 Q 35.85 69.12 35.85 69.42 L 35.84 71.37 Q 35.84 71.91 36.38 71.92 L 39.48 71.99 Q 39.64 72.00 39.78 71.91 L 40.05 71.75 Q 40.17 71.68 40.30 71.66 L 40.36 71.66 Q 40.49 71.66 40.60 71.59 L 41.65 70.99 L 42.16 70.48 Q 42.25 70.40 42.36 70.36 L 42.39 70.36 Q 42.51 70.31 42.59 70.23 L 43.72 69.10 Q 43.80 69.02 43.83 68.90 L 43.85 68.87 Q 43.88 68.76 43.98 68.69 L 44.17 68.56 Q 44.40 68.40 44.59 68.60 L 46.34 70.48 L 48.52 71.82 L 48.95 71.96 Q 49.04 72.00 49.13 71.99 L 52.06 71.98 Q 52.60 71.98 52.61 71.44 L 52.66 69.35 Q 52.66 69.12 52.43 69.09 L 52.28 69.07 Q 52.15 69.06 52.04 68.98 L 52.02 68.97 Q 51.92 68.89 51.78 68.89 L 51.42 68.89 Q 51.33 68.89 51.24 68.87 L 50.32 68.56 L 48.79 67.71 L 47.48 66.39 L 46.63 64.87 L 46.33 63.94 Q 46.30 63.86 46.30 63.77 L 46.30 63.41 Q 46.30 63.28 46.22 63.17 L 46.21 63.15 Q 46.13 63.04 46.13 62.91 L 46.13 42.89 Q 46.13 42.82 46.09 42.77 L 46.07 42.75 Q 46.02 42.71 45.95 42.71 Z M 38.32 37.35 L 37.24 38.43 Q 37.18 38.48 37.15 38.55 L 36.23 40.24 Q 36.16 40.37 36.16 40.50 L 36.16 40.66 Q 36.16 40.78 36.09 40.89 L 36.07 40.91 Q 36.00 41.02 36.00 41.15 L 36.00 41.80 Q 36.00 41.93 35.92 42.03 L 35.91 42.06 Q 35.83 42.17 35.83 42.29 L 35.85 62.39 Q 35.85 62.93 36.40 62.94 L 39.40 62.99 Q 39.47 62.99 39.53 62.94 L 39.53 62.93 Q 39.59 62.88 39.59 62.81 L 39.59 41.94 Q 39.59 41.84 39.62 41.74 L 39.89 41.07 Q 39.94 40.97 40.01 40.89 L 40.55 40.35 Q 40.61 40.28 40.69 40.24 L 41.23 39.97 Q 41.35 39.92 41.47 39.92 L 48.89 39.92 Q 48.97 39.92 49.02 39.97 L 49.04 39.98 Q 49.09 40.04 49.09 40.12 L 49.09 62.81 Q 49.09 62.88 49.14 62.93 L 49.15 62.94 Q 49.20 62.99 49.28 62.99 L 52.07 62.97 Q 52.62 62.97 52.62 62.42 L 52.66 36.77 Q 52.66 36.22 52.11 36.22 L 41.47 36.16 Q 41.35 36.16 41.24 36.23 L 41.22 36.25 Q 41.11 36.32 40.98 36.32 L 40.62 36.32 Q 40.53 36.32 40.44 36.35 L 39.51 36.66 Z M 59.42 36.00 Q 59.35 36.00 59.30 36.05 L 59.29 36.06 Q 59.23 36.11 59.23 36.18 L 59.23 51.89 Q 59.23 52.08 59.11 52.21 L 59.08 52.23 Q 58.95 52.37 58.77 52.37 L 55.47 52.41 Q 55.35 52.41 55.41 52.52 L 55.42 52.55 Q 55.47 52.65 55.47 52.77 L 55.47 71.81 Q 55.47 71.88 55.52 71.93 L 55.54 71.94 Q 55.59 72.00 55.65 72.00 L 68.92 72.00 Q 69.10 72.00 69.24 71.89 L 70.33 71.13 L 71.13 70.16 L 71.77 69.05 Q 71.82 68.96 71.84 68.87 L 71.97 68.14 Q 72.00 68.02 72.06 67.92 L 72.09 67.90 Q 72.16 67.79 72.16 67.66 L 72.16 52.55 Q 72.16 52.48 72.11 52.43 L 72.09 52.41 Q 72.05 52.37 71.98 52.37 L 63.17 52.32 Q 63.03 52.32 62.94 52.21 L 62.92 52.19 Q 62.83 52.08 62.83 51.94 L 62.83 44.15 Q 62.83 43.97 62.96 43.83 L 62.99 43.81 Q 63.11 43.68 63.30 43.68 L 71.53 43.67 Q 72.07 43.67 72.09 43.13 L 72.16 40.11 Q 72.16 40.04 72.11 39.98 L 72.09 39.98 Q 72.05 39.92 71.98 39.92 L 63.30 39.92 Q 63.11 39.92 62.99 39.80 L 62.96 39.77 Q 62.83 39.64 62.83 39.46 L 62.83 36.40 Q 62.83 36.28 62.88 36.18 L 62.89 36.14 Q 62.94 36.02 62.81 36.02 Z M 59.13 56.53 Q 59.14 55.97 59.69 55.98 L 67.99 56.02 Q 68.55 56.02 68.55 56.58 L 68.57 66.86 Q 68.57 66.97 68.53 67.07 L 68.24 67.77 Q 68.20 67.87 68.12 67.95 L 67.43 68.63 Q 67.35 68.71 67.25 68.75 L 66.58 69.02 Q 66.48 69.06 66.37 69.05 L 59.64 68.99 Q 59.08 68.98 59.09 68.44 Z" />
+            </group>
+
+            <!-- 5. 右上角论坛加精琥珀微光星石 - 超新星旋转绽放 -->
+            <group
+                android:name="gemstone_group"
+                android:pivotX="71.66"
+                android:pivotY="34.27">
+                <path
+                    android:name="gem_outer"
+                    android:fillColor="#FFB300"
+                    android:pathData="M 71.66,32.19 A 2.08,2.08 0 1,1 71.65,32.19 Z" />
+                <path
+                    android:name="gem_inner"
+                    android:fillColor="#FFFFFF"
+                    android:pathData="M 71.66,33.23 A 1.04,1.04 0 1,1 71.65,33.23 Z" />
+            </group>
+
+            <!-- 计时哨兵 (1000ms 完整周期) -->
+            <group android:name="time_marker" />
+        </vector>
+    </aapt:attr>
+
+    <!-- 1. 冰川天蓝水滴：破空高速冲入 -> 剧烈碰撞形变 -> 弹性回弹定格 -->
+    <target android:name="waterdrop_sky_group">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <!-- X轴位移：从左上 -24dp 高速冲向中心 0dp -->
+                <objectAnimator
+                    android:duration="280"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="translateX"
+                    android:valueFrom="-24.0"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+                <!-- Y轴位移：从左上 -18dp 冲向中心 0dp -->
+                <objectAnimator
+                    android:duration="280"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="translateY"
+                    android:valueFrom="-18.0"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+
+                <!-- 碰撞流体形变 scaleX：飞行拉伸 0.6 -> 碰撞横向挤压 1.22 -> 反弹 0.92 -> 定格 1.0 -->
+                <objectAnimator
+                    android:duration="280"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.60"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="280"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="1.00"
+                    android:valueTo="1.22"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="440"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="1.22"
+                    android:valueTo="0.92"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="620"
+                    android:duration="200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.92"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 碰撞流体形变 scaleY：飞行纵向拉伸 1.2 -> 碰撞压扁 0.80 -> 反弹拉伸 1.08 -> 定格 1.0 -->
+                <objectAnimator
+                    android:duration="280"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="1.20"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="280"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="1.00"
+                    android:valueTo="0.80"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="440"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.80"
+                    android:valueTo="1.08"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="620"
+                    android:duration="200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="1.08"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 冲入旋转摆动：-20度倾角冲入 -> 碰撞顺时针甩动 +8度 -> 阻尼回摆定格 0度 -->
+                <objectAnimator
+                    android:duration="280"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="-20.0"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="280"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="0.0"
+                    android:valueTo="8.0"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="460"
+                    android:duration="240"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="8.0"
+                    android:valueTo="-2.0"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="700"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="-2.0"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="waterdrop_sky">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="200"
+                    android:interpolator="@android:interpolator/linear"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0.0"
+                    android:valueTo="0.92"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <!-- 2. 贴吧经典深蓝水滴：右下角对冲汇聚 -> 撞击压缩 -> 互相交融定格 -->
+    <target android:name="waterdrop_deep_group">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <!-- X轴位移：从右下 +22dp 对冲进入 0dp -->
+                <objectAnimator
+                    android:startOffset="60"
+                    android:duration="260"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="translateX"
+                    android:valueFrom="22.0"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+                <!-- Y轴位移：从右下 +20dp 对冲进入 0dp -->
+                <objectAnimator
+                    android:startOffset="60"
+                    android:duration="260"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="translateY"
+                    android:valueFrom="20.0"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+
+                <!-- 碰撞形变 scaleX：飞行 1.2 -> 撞扁 0.82 -> 回弹 1.06 -> 定格 1.0 -->
+                <objectAnimator
+                    android:startOffset="60"
+                    android:duration="260"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="1.20"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="1.00"
+                    android:valueTo="0.82"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="480"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.82"
+                    android:valueTo="1.06"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="660"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="1.06"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 碰撞形变 scaleY：飞行 0.6 -> 挤压拉长 1.20 -> 回弹 0.94 -> 定格 1.0 -->
+                <objectAnimator
+                    android:startOffset="60"
+                    android:duration="260"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.60"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="1.00"
+                    android:valueTo="1.20"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="480"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="1.20"
+                    android:valueTo="0.94"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="660"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.94"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 旋转偏航：+18度进入 -> 碰撞逆时针 -7度 -> 阻尼定格 0度 -->
+                <objectAnimator
+                    android:startOffset="60"
+                    android:duration="260"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="18.0"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="0.0"
+                    android:valueTo="-7.0"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="500"
+                    android:duration="220"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="-7.0"
+                    android:valueTo="1.5"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="720"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="1.5"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="waterdrop_deep">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:startOffset="60"
+                    android:duration="200"
+                    android:interpolator="@android:interpolator/linear"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0.0"
+                    android:valueTo="1.0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <!-- 3. 官方贴字与三层微环境阴影：破水升腾浮现 (320ms ~ 760ms) -->
+    <target android:name="tie_char_group">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <!-- 破水升腾位移：深处 +18dp -> 冲刺过冲 -3.5dp -> 沉降 0dp -->
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="320"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="translateY"
+                    android:valueFrom="18.0"
+                    android:valueTo="-3.5"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="640"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="translateY"
+                    android:valueFrom="-3.5"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+
+                <!-- 破水浮力膨胀 scaleX：0.25 -> 冲出 1.10 -> 定格 1.0 -->
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="320"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.25"
+                    android:valueTo="1.10"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="640"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="1.10"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 破水浮力膨胀 scaleY：0.25 -> 冲出 1.10 -> 定格 1.0 -->
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="320"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.25"
+                    android:valueTo="1.10"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="640"
+                    android:duration="160"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="1.10"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 破水浮动倾角：-4.0度 -> +1.5度 -> 0度 -->
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="300"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="-4.0"
+                    android:valueTo="1.5"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="620"
+                    android:duration="180"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="1.5"
+                    android:valueTo="0.0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <!-- 贴字与三层阴影破水淡入 -->
+    <target android:name="tie_char">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="240"
+                    android:interpolator="@android:interpolator/linear"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0.0"
+                    android:valueTo="1.0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="tie_shadow_1">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="240"
+                    android:interpolator="@android:interpolator/linear"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0.0"
+                    android:valueTo="0.22"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="tie_shadow_2">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="240"
+                    android:interpolator="@android:interpolator/linear"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0.0"
+                    android:valueTo="0.16"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="tie_shadow_3">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:startOffset="320"
+                    android:duration="240"
+                    android:interpolator="@android:interpolator/linear"
+                    android:propertyName="fillAlpha"
+                    android:valueFrom="0.0"
+                    android:valueTo="0.09"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <!-- 4. 右上角加精琥珀星石：超新星脉冲旋转爆发 (520ms ~ 900ms) -->
+    <target android:name="gemstone_group">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <!-- 脉冲爆发 scaleX：0.0 -> 极速爆发 1.65 -> 回缩 0.88 -> 定格 1.0 -->
+                <objectAnimator
+                    android:startOffset="520"
+                    android:duration="200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.0"
+                    android:valueTo="1.65"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="720"
+                    android:duration="120"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="1.65"
+                    android:valueTo="0.88"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="840"
+                    android:duration="120"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.88"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 脉冲爆发 scaleY：0.0 -> 极速爆发 1.65 -> 回缩 0.88 -> 定格 1.0 -->
+                <objectAnimator
+                    android:startOffset="520"
+                    android:duration="200"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.0"
+                    android:valueTo="1.65"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="720"
+                    android:duration="120"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="1.65"
+                    android:valueTo="0.88"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:startOffset="840"
+                    android:duration="120"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.88"
+                    android:valueTo="1.00"
+                    android:valueType="floatType" />
+
+                <!-- 伴随光芒旋转 90度 -->
+                <objectAnimator
+                    android:startOffset="520"
+                    android:duration="380"
+                    android:interpolator="@android:interpolator/fast_out_slow_in"
+                    android:propertyName="rotation"
+                    android:valueFrom="0.0"
+                    android:valueTo="90.0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <!-- 5. 1000ms 计时哨兵，确保平稳定格 -->
+    <target android:name="time_marker">
+        <aapt:attr name="android:animation">
+            <set android:ordering="together">
+                <objectAnimator
+                    android:duration="1000"
+                    android:propertyName="translateX"
+                    android:valueFrom="0.0"
+                    android:valueTo="1.0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

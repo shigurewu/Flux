@@ -1,0 +1,385 @@
+package com.huanchengfly.tieba.post.ui.page.photoview
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.view.MotionEvent
+import androidx.activity.viewModels
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.SaveAlt
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
+import com.github.panpf.sketch.compose.rememberAsyncImageState
+import com.github.panpf.sketch.request.LoadState
+import com.github.panpf.zoomimage.SketchZoomAsyncImage
+import com.stoyanvuchev.systemuibarstweaker.SystemUIBarsTweaker
+import com.huanchengfly.tieba.post.R
+import com.huanchengfly.tieba.post.api.retrofit.exception.getErrorMessage
+import com.huanchengfly.tieba.post.arch.BaseComposeActivityWithParcelable
+import com.huanchengfly.tieba.post.arch.GlobalEvent
+import com.huanchengfly.tieba.post.arch.emitGlobalEventSuspend
+import com.huanchengfly.tieba.post.models.PhotoViewData
+import com.huanchengfly.tieba.post.repository.MemeRepository
+import com.huanchengfly.tieba.post.toastShort
+import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
+import com.huanchengfly.tieba.post.ui.widgets.compose.LazyLoad
+import com.huanchengfly.tieba.post.ui.widgets.compose.ProvideContentColor
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.utils.ImageUtil
+import com.huanchengfly.tieba.post.utils.download
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+@Composable
+private fun ViewPhoto(
+    imageUri: String,
+    modifier: Modifier = Modifier,
+    onTap: (offset: Offset) -> Unit = {},
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        val state = rememberAsyncImageState()
+        val progress by remember {
+            derivedStateOf {
+                (state.progress?.completedLength?.toFloat() ?: 0f) / (state.progress?.totalLength
+                    ?: 1)
+            }
+        }
+        val showProgress by remember {
+            derivedStateOf {
+                state.loadState is LoadState.Started
+            }
+        }
+        SketchZoomAsyncImage(
+            imageUri = imageUri,
+            contentDescription = stringResource(id = R.string.desc_image),
+            modifier = Modifier.fillMaxSize(),
+            onTap = onTap,
+            imageState = state,
+        )
+        if (showProgress) {
+            Box(
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    progress = progress,
+                    color = ExtendedTheme.colors.accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(48.dp)
+                )
+                Text(
+                    text = "${(progress * 100).roundToInt()}%",
+                    color = ExtendedTheme.colors.accent,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+class PhotoViewActivity : BaseComposeActivityWithParcelable<PhotoViewData>() {
+    private val viewModel: PhotoViewViewModel by viewModels()
+    private var systemUIBarsTweaker: SystemUIBarsTweaker? = null
+
+    override val dataExtraKey: String = EXTRA_PHOTO_VIEW_DATA
+
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    override fun Content(data: PhotoViewData) {
+        LazyLoad(loaded = viewModel.initialized) {
+            viewModel.send(PhotoViewUiIntent.Init(data))
+            viewModel.initialized = true
+        }
+        val uiState by viewModel.uiState.collectAsState()
+        val items by remember { derivedStateOf { uiState.data } }
+        val initialIndex by remember { derivedStateOf { uiState.initialIndex } }
+        val totalAmount by remember { derivedStateOf { uiState.totalAmount } }
+        val hasPrev by remember { derivedStateOf { uiState.hasPrev } }
+        val hasNext by remember { derivedStateOf { uiState.hasNext } }
+        val loadPicPageData by remember { derivedStateOf { uiState.loadPicPageData } }
+        val loaded by remember { derivedStateOf { uiState.data.isNotEmpty() } }
+
+        // 记录隐藏系统栏前的导航栏高度，隐藏后底栏保持相同间距，避免操作条下移
+        val navigationBarsHeight = remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(Unit) {
+            // 等待窗口 insets 分发完成
+            delay(100)
+            navigationBarsHeight.intValue = ViewCompat.getRootWindowInsets(window.decorView)
+                ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+            // 本 Activity 为半透明窗口，淡入动画（约 400ms）期间隐藏系统栏
+            // 会触发下层窗口 insets 重排造成可见跳动，故延迟到淡入完成后再隐藏
+            delay(350)
+            systemUIBarsTweaker?.apply {
+                tweakStatusBarVisibility(false)
+                tweakNavigationBarVisibility(false)
+            }
+        }
+
+        Surface(color = Color.Black) {
+            if (loaded) {
+                val pageCount by remember { derivedStateOf { items.size } }
+
+                val pagerState = rememberPagerState(initialPage = initialIndex) { pageCount }
+
+                LaunchedEffect(initialIndex) {
+                    if (pagerState.currentPage != initialIndex) pagerState.scrollToPage(initialIndex)
+                }
+
+                LaunchedEffect(pagerState.currentPage, pageCount, loadPicPageData) {
+                    loadPicPageData?.let {
+                        val item = items[pagerState.currentPage]
+                        if (pagerState.currentPage == 0 && hasPrev) {
+                            viewModel.send(
+                                PhotoViewUiIntent.LoadPrev(
+                                    item.picId,
+                                    item.overallIndex,
+                                    it
+                                )
+                            )
+                        } else if (pagerState.currentPage == pageCount - 1 && hasNext) {
+                            viewModel.send(
+                                PhotoViewUiIntent.LoadMore(
+                                    item.picId,
+                                    item.overallIndex,
+                                    it
+                                )
+                            )
+                        }
+                    }
+                }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    HorizontalPager(
+                        state = pagerState,
+                        key = { "${items[it].picId}_${items[it].postId}" }
+                    ) {
+                        val item = items[it]
+                        ViewPhoto(
+                            imageUri = item.originUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            onTap = {
+                                finish()
+                            },
+                        )
+                    }
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                    ) {
+                        ProvideContentColor(color = Color.White) {
+                            val density = LocalDensity.current
+                            val fixedNavBarsPadding = navigationBarsHeight.intValue
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                Color.Black.copy(alpha = 0.0f),
+                                                Color.Black.copy(alpha = 0.5f)
+                                            )
+                                        )
+                                    )
+                                    .padding(horizontal = 16.dp)
+                                    .then(
+                                        if (fixedNavBarsPadding > 0) {
+                                            // 系统栏隐藏后 inset 会变为 0，改用隐藏前记录的固定高度
+                                            Modifier.padding(
+                                                bottom = with(density) { fixedNavBarsPadding.toDp() }
+                                            )
+                                        } else {
+                                            Modifier.navigationBarsPadding()
+                                        }
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val index = pagerState.currentPage
+                                val currentItem = items[index]
+                                // 查看楼层（issue #17）：仅帖子详情内打开的图片可跳回所在楼层
+                                if (loadPicPageData?.objType == "pb" &&
+                                    currentItem.postId != null && currentItem.postId != 0L
+                                ) {
+                                    IconButton(onClick = {
+                                        val threadId = loadPicPageData?.threadId ?: return@IconButton
+                                        val postId = currentItem.postId ?: return@IconButton
+                                        lifecycleScope.launch {
+                                            emitGlobalEventSuspend(
+                                                GlobalEvent.ScrollToPost(
+                                                    threadId = threadId,
+                                                    postId = postId
+                                                )
+                                            )
+                                            finish()
+                                        }
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Layers,
+                                            contentDescription = stringResource(id = R.string.title_view_floor)
+                                        )
+                                    }
+                                }
+                                if (totalAmount > 1) {
+                                    val picIndex = items[index].overallIndex
+                                    Text(
+                                        text = "$picIndex / $totalAmount",
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                                IconButton(onClick = {
+                                    val uid = AccountUtil.getUid()
+                                    if (uid == null) {
+                                        toastShort(R.string.tip_login_first)
+                                    } else {
+                                        val item = items[index]
+                                        lifecycleScope.launch {
+                                            MemeRepository.addMeme(
+                                                uid = uid,
+                                                picUrl = item.originUrl,
+                                                thumbnail = null,
+                                                width = item.width,
+                                                height = item.height,
+                                            ).onSuccess {
+                                                toastShort(R.string.toast_add_meme_success)
+                                            }.onFailure {
+                                                toastShort(
+                                                    getString(
+                                                        R.string.toast_add_meme_failed,
+                                                        it.getErrorMessage()
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.EmojiEmotions,
+                                        contentDescription = stringResource(id = R.string.title_add_to_meme)
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    toastShort(R.string.toast_preparing_share_pic)
+                                    ImageUtil.download(
+                                        this@PhotoViewActivity,
+                                        items[index].originUrl,
+                                        true
+                                    ) { uri: Uri ->
+                                        val chooser = Intent(Intent.ACTION_SEND).apply {
+                                            type = Intent.normalizeMimeType("image/jpeg")
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                                putExtra(Intent.EXTRA_STREAM, uri)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            } else {
+                                                putExtra(Intent.EXTRA_STREAM, uri)
+                                            }
+                                        }.let {
+                                            Intent.createChooser(
+                                                it,
+                                                getString(R.string.title_share_pic)
+                                            )
+                                        }
+                                        runCatching {
+                                            startActivity(chooser)
+                                        }
+                                    }
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Share,
+                                        contentDescription = stringResource(id = R.string.title_share_pic)
+                                    )
+                                }
+                                // 保存全部（issue #6）：批量保存当前可见的全部原图（去重）
+                                IconButton(onClick = {
+                                    ImageUtil.downloadAll(
+                                        this@PhotoViewActivity,
+                                        items.map { it.originUrl }
+                                    )
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SaveAlt,
+                                        contentDescription = stringResource(id = R.string.title_save_all_pics)
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    ImageUtil.download(
+                                        this@PhotoViewActivity,
+                                        items[index].originUrl
+                                    )
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Download,
+                                        contentDescription = stringResource(id = R.string.desc_download_pic)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCreateContent(systemUIBarsTweaker: SystemUIBarsTweaker) {
+        // 此处不立即隐藏系统栏：本 Activity 为半透明窗口，
+        // 淡入过渡期间隐藏会触发下层窗口 insets 重排造成跳动，
+        // 故仅保存引用，由 Content 在淡入完成后延迟隐藏（见 Content 中的 LaunchedEffect）
+        this.systemUIBarsTweaker = systemUIBarsTweaker
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        return try {
+            super.dispatchTouchEvent(ev)
+        } catch (e: RuntimeException) {
+            e.printStackTrace()
+            true
+        }
+    }
+
+    companion object {
+        const val EXTRA_PHOTO_VIEW_DATA = "photo_view_data"
+    }
+}

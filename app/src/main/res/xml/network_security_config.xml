@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 默认禁止明文，只有贴吧相关域名放行（部分老接口/图床仍是 http） -->
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">baidu.com</domain>
+        <domain includeSubdomains="true">bdstatic.com</domain>
+        <domain includeSubdomains="true">bdimg.com</domain>
+    </domain-config>
+</network-security-config>
