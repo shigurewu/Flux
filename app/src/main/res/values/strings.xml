@@ -1,5 +1,5 @@
 ﻿<resources>
-    <string name="app_name">FluxTie</string>
+    <string name="app_name">Flux</string>
     <string name="title_notifications">消息</string>
     <string name="title_explore">动态</string>
     <string name="title_user">我</string>
@@ -703,3 +703,4 @@
     <string name="title_public">公开</string>
     <string name="title_thread_privacy">帖子隐私</string>
 </resources>
+

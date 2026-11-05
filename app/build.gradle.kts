@@ -62,7 +62,7 @@ android {
     buildToolsVersion = "36.0.0"
     compileSdk = 37
     defaultConfig {
-        applicationId = "com.makise.fluxtie.mod"
+        applicationId = "com.shigurewu.flux"
         minSdk = 23
         //noinspection OldTargetApi
         targetSdk = 37
@@ -143,7 +143,7 @@ androidComponents {
     onVariants { variant ->
         variant.outputs.forEach { output ->
             output.outputFileName.set(
-                "FluxTie-v${applicationVersionName}.apk"
+                "Flux-v${applicationVersionName}.apk"
             )
         }
     }
@@ -285,4 +285,5 @@ dependencies {
 
     // ksp(libs.kotlin.metadata.jvm)
 }
+
 
