@@ -140,6 +140,7 @@ import com.huanchengfly.tieba.post.models.database.History
 import com.huanchengfly.tieba.post.toJson
 import com.huanchengfly.tieba.post.toastShort
 import com.huanchengfly.tieba.post.ui.common.PbContentRender
+import com.huanchengfly.tieba.post.ui.common.TextContentRender
 import com.huanchengfly.tieba.post.ui.common.PicContentRender
 import com.huanchengfly.tieba.post.ui.common.PbContentText
 import com.huanchengfly.tieba.post.ui.common.PicWaterfallContentRender
@@ -2537,8 +2538,21 @@ fun PostCard(
                     }
                 },
                 content = {
+                    // 只有主楼（1 楼）加宽行距/字间距；回复楼层与楼中楼保持原样
+                    val bodyRenders = remember(contentRenders, post.floor) {
+                        if (post.floor <= 1) {
+                            contentRenders.map { render ->
+                                if (render is TextContentRender) {
+                                    render.copy(
+                                        lineSpacing = 4.sp,
+                                        letterSpacing = 0.3.sp
+                                    )
+                                } else render
+                            }
+                        } else contentRenders
+                    }
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = paddingModifier
                             .fillMaxWidth()
                     ) {
@@ -2546,9 +2560,7 @@ fun PostCard(
                             Text(
                                 text = post.title,
                                 style = MaterialTheme.typography.subtitle1,
-                                // 标题：贴吧主楼标题字号明显大于正文，行距同步放大
-                                fontSize = 21.sp,
-                                lineHeight = 30.sp,
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -2569,7 +2581,7 @@ fun PostCard(
 
                         var waterfallImages: MutableList<PicContentRender>? = null
 
-                        contentRenders.forEach { render ->
+                        bodyRenders.forEach { render ->
                             if (render is PicContentRender) {
                                 if (waterfallImages == null) waterfallImages = mutableListOf()
                                 waterfallImages!!.add(render)

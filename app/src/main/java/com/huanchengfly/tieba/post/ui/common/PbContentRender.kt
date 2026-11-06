@@ -70,7 +70,11 @@ interface PbContentRender {
 
 @Stable
 data class TextContentRender(
-    val text: AnnotatedString
+    val text: AnnotatedString,
+    // 排版参数默认值即 1.2.0-mod21 的样子；主楼可以在外层覆盖行距/字间距
+    val fontSize: TextUnit = 15.sp,
+    val lineSpacing: TextUnit = 0.8.sp,
+    val letterSpacing: TextUnit = TextUnit.Unspecified,
 ) : PbContentRender {
     constructor(text: String) : this(AnnotatedString(text))
 
@@ -82,10 +86,10 @@ data class TextContentRender(
     override fun Render() {
         PbContentText(
             text = text,
-            fontSize = 17.sp,
+            fontSize = fontSize,
             style = MaterialTheme.typography.body1,
-            // 行距：贴吧正文偏松，按 17sp 字号加 6sp 行距，接近原版 1.7 倍行高
-            lineSpacing = 6.sp
+            lineSpacing = lineSpacing,
+            letterSpacing = letterSpacing
         )
     }
 
