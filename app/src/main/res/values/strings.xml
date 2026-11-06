@@ -706,6 +706,13 @@
     <string name="summary_hide_notification_dot">关闭后消息页与底栏不再显示未读红点</string>
     <string name="tip_hub_no_new_message">暂无新消息</string>
     <string name="action_mark_all_read">全部已读</string>
+    <string name="title_about_thanks">致谢</string>
+    <string name="title_about_fluxtie">FluxTie</string>
+    <string name="summary_about_fluxtie">本项目的上游 · makise2060/FluxTie</string>
+    <string name="title_about_tiebalite">TiebaLite</string>
+    <string name="summary_about_tiebalite">FluxTie 的上游 · huanchengfly/tieba-post</string>
+    <string name="tip_about_thanks">本项目绝大多数功能与实现都来自上游，功劳归原作者。这里只做了少量个人自用的小改动。</string>
+    <string name="summary_check_update_self">检查本项目（shigurewu/Flux）的最新版本</string>
     <string name="msg_action_reply_you">回复了你</string>
     <string name="msg_action_mention_you">提到了你</string>
     <string name="msg_action_agree_you">赞了你的回复</string>

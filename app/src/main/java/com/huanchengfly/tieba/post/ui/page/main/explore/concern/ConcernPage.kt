@@ -12,6 +12,9 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Arrangement
@@ -77,10 +80,15 @@ fun ConcernPage(
         viewModel.send(ConcernUiIntent.Refresh)
     }
 
-    // 底栏再次点击「动态」：直接监听 tick 触发刷新，避免事件转发链断掉
+    // 底栏再次点击「动态」：直接监听 tick 触发刷新，避免事件转发链断掉。
+    // lastHandledReselectTick 从「进入页面时的 tick」起步，带着历史 tick 重新进入不会刷新；
+    // 只有真正在动态页再点一次（tick 递增）才刷新。
     val tabReselect = LocalTabReselect.current
-    LaunchedEffect(tabReselect.tick) {
-        if (tabReselect.tick > 0 && tabReselect.tabId == "explore") {
+    var lastHandledReselectTick by remember { mutableIntStateOf(tabReselect.tick) }
+    LaunchedEffect(tabReselect.tick, tabReselect.tabId) {
+        if (tabReselect.tick == lastHandledReselectTick) return@LaunchedEffect
+        lastHandledReselectTick = tabReselect.tick
+        if (tabReselect.tabId == "explore") {
             viewModel.send(ConcernUiIntent.Refresh)
         }
     }

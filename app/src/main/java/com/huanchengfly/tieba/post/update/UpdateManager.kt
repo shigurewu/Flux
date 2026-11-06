@@ -273,7 +273,10 @@ class UpdateManager @Inject constructor(
         const val EXTRA_INSTALL_UPDATE = "update_install"
         private const val RELEASES_URL = "https://github.com/shigurewu/Flux/releases"
 
-        /** mod 版：屏蔽应用内更新检查（静默检查与手动检查都不再发起网络请求） */
-        private const val UPDATE_DISABLED = true
+        /**
+         * 更新源已切换为本仓库（shigurewu/Flux）的 Release，因此不再屏蔽更新检查：
+         * 静默检查与「关于 → 检查更新」都会查询本项目自己的最新版本。
+         */
+        private const val UPDATE_DISABLED = false
     }
 }

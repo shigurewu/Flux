@@ -161,10 +161,15 @@ fun PersonalizedPage(
     }
 
     // 点击底栏「动态」：回顶 → 圆圈拉下来 → 旋转并刷新 → 提示 → 收回
-    // 与手动下拉复用同一个 GlassPullRefreshState，所以同一时刻只有一套动画在动
+    // 与手动下拉复用同一个 GlassPullRefreshState，所以同一时刻只有一套动画在动。
+    // lastHandledReselectTick 从进入页面时的值起步：从别的 Tab 切回来不会因历史 tick 触发刷新，
+    // 只有人真的在动态页再点一次「动态」才刷新。
     val tabReselect = LocalTabReselect.current
-    LaunchedEffect(tabReselect.tick) {
-        if (tabReselect.tick > 0 && tabReselect.tabId == "explore") {
+    var lastHandledReselectTick by remember { mutableIntStateOf(tabReselect.tick) }
+    LaunchedEffect(tabReselect.tick, tabReselect.tabId) {
+        if (tabReselect.tick == lastHandledReselectTick) return@LaunchedEffect
+        lastHandledReselectTick = tabReselect.tick
+        if (tabReselect.tabId == "explore") {
             if (isRefreshing) return@LaunchedEffect
             val notAtTop = lazyListState.firstVisibleItemIndex > 0 ||
                     lazyListState.firstVisibleItemScrollOffset > 0

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.runtime.Composable
@@ -263,6 +264,7 @@ fun AboutPage(
                     SettingRow(
                         icon = Icons.Rounded.History,
                         title = stringResource(id = R.string.title_check_update),
+                        summary = stringResource(id = R.string.summary_check_update_self),
                         trailing = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
@@ -328,6 +330,55 @@ fun AboutPage(
                         onClick = { navigator.navigate(LogPageDestination) }
                     )
                 }
+            }
+
+            // ── 致谢：把功劳还给上游
+            item {
+                SectionLabel(
+                    text = stringResource(id = R.string.title_about_thanks),
+                    icon = Icons.Rounded.Favorite
+                )
+            }
+            item {
+                AppearanceCard {
+                    SettingRow(
+                        icon = Icons.Rounded.Code,
+                        title = stringResource(id = R.string.title_about_fluxtie),
+                        summary = stringResource(id = R.string.summary_about_fluxtie),
+                        trailing = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                                contentDescription = null,
+                                tint = ExtendedTheme.colors.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = { launchUrl(context, navigator, "https://github.com/makise2060/FluxTie") }
+                    )
+                    CardDivider()
+                    SettingRow(
+                        icon = Icons.Rounded.Code,
+                        title = stringResource(id = R.string.title_about_tiebalite),
+                        summary = stringResource(id = R.string.summary_about_tiebalite),
+                        trailing = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                                contentDescription = null,
+                                tint = ExtendedTheme.colors.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = { launchUrl(context, navigator, "https://github.com/huanchengfly/tieba-post") }
+                    )
+                }
+            }
+            item {
+                Text(
+                    text = stringResource(id = R.string.tip_about_thanks),
+                    style = MaterialTheme.typography.caption,
+                    color = ExtendedTheme.colors.textSecondary,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                )
             }
         }
     }
