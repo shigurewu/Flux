@@ -1013,6 +1013,8 @@ fun ThreadAgreeBtn(
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        // 与分享/评论一致：内容在自身权重格内居中，否则点赞会贴左
+        horizontalArrangement = Arrangement.Center,
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .debounceClickable(
