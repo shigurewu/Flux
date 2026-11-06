@@ -2538,7 +2538,7 @@ fun PostCard(
                 },
                 content = {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = paddingModifier
                             .fillMaxWidth()
                     ) {
@@ -2546,7 +2546,9 @@ fun PostCard(
                             Text(
                                 text = post.title,
                                 style = MaterialTheme.typography.subtitle1,
-                                fontSize = 15.sp,
+                                // 标题：贴吧主楼标题字号明显大于正文，行距同步放大
+                                fontSize = 21.sp,
+                                lineHeight = 30.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }

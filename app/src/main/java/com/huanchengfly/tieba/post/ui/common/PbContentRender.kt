@@ -82,9 +82,10 @@ data class TextContentRender(
     override fun Render() {
         PbContentText(
             text = text,
-            fontSize = 15.sp,
+            fontSize = 17.sp,
             style = MaterialTheme.typography.body1,
-            lineSpacing = 0.8.sp
+            // 行距：贴吧正文偏松，按 17sp 字号加 6sp 行距，接近原版 1.7 倍行高
+            lineSpacing = 6.sp
         )
     }
 
