@@ -11,6 +11,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.huanchengfly.tieba.post.ui.theme.flux.FluxMaterial
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
@@ -221,7 +223,11 @@ private fun FloatingDockImpl(
     val accentColor = MaterialTheme.colors.secondary
     val tabContentColor = MaterialTheme.colors.onSurface
     val surfaceContainer = themeColors.bottomBarSurface
-    val containerColor = if (isBlurEnabled) surfaceContainer.copy(alpha = 0.4f) else surfaceContainer
+    val containerColor = if (isBlurEnabled) {
+        surfaceContainer.copy(alpha = FluxMaterial.glassSurfaceAlpha)
+    } else {
+        surfaceContainer.copy(alpha = FluxMaterial.glassFallbackAlpha)
+    }
     val tabsBackdrop = rememberLayerBackdrop()
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
@@ -372,10 +378,20 @@ private fun FloatingDockImpl(
             text = item.title(selected),
             fontSize = 11.sp,
             lineHeight = 14.sp,
-            fontWeight = FontWeight.Normal,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis,
+        )
+        // Flux 选中标记：图标下方一条短强调线，替代整块胶囊底色
+        Box(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(width = 14.dp, height = 2.dp)
+                .clip(CircleShape)
+                .background(
+                    if (selected) themeColors.accent else Color.Transparent
+                )
         )
     }
 
@@ -431,6 +447,12 @@ private fun FloatingDockImpl(
                     } else {
                         Modifier.background(containerColor, pillShape)
                     },
+                )
+                // Flux 材质：玻璃边缘统一 0.5dp 细描边，保证浅色壁纸下也有边界
+                .border(
+                    width = 0.5.dp,
+                    color = themeColors.onBottomBarSurface.copy(alpha = FluxMaterial.glassBorderAlpha),
+                    shape = pillShape
                 )
                 .then(
                     if (isBlurEnabled) {
@@ -617,6 +639,7 @@ private fun FloatingDockImpl(
         }
     }
 }
+
 
 
 

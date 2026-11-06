@@ -1,8 +1,10 @@
-package com.huanchengfly.tieba.post.ui.widgets.compose
+﻿package com.huanchengfly.tieba.post.ui.widgets.compose
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -22,6 +24,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -90,6 +93,29 @@ class GlassPullRefreshState internal constructor(
     internal fun finishRefresh() {
         settleJob?.cancel()
         settleJob = scope.launch { animateTo(0f) }
+    }
+
+    /**
+     * 由底栏「动态」按钮触发的刷新：
+     * 圆圈从顶部平滑拉下来到阈值位置，随后触发一次真实刷新。
+     *
+     * 与手动下拉共用同一份 offset / refreshing 状态，所以不会出现两套动画抢位移；
+     * 被取消（再次点击、页面销毁）时会把圆圈收回，不会停在半空。
+     */
+    suspend fun animateRefresh() {
+        if (refreshing) return
+        settleJob?.cancel()
+        try {
+            animate(
+                initialValue = offsetPx,
+                targetValue = thresholdPx,
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+            ) { value, _ -> offsetPx = value }
+            if (!refreshing) onRefresh()
+        } catch (cancel: CancellationException) {
+            finishRefresh()
+            throw cancel
+        }
     }
 
     internal fun setRefreshing(value: Boolean) {
@@ -166,3 +192,6 @@ private val GlassPullRefreshState.nestedScrollConnection: NestedScrollConnection
             return Velocity.Zero
         }
     }
+
+
+

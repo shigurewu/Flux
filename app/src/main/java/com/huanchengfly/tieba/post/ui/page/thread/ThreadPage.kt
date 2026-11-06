@@ -1,4 +1,4 @@
-﻿package com.huanchengfly.tieba.post.ui.page.thread
+package com.huanchengfly.tieba.post.ui.page.thread
 
 import android.util.Log
 import androidx.compose.animation.animateColorAsState
@@ -34,12 +34,22 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import com.huanchengfly.tieba.post.repository.AddPostRepository
+import kotlinx.coroutines.flow.catch
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.ModalBottomSheetLayout
 import androidx.compose.material.ModalBottomSheetValue
@@ -373,57 +383,6 @@ private fun BottomBarCommentBtn(
     }
 }
 
-@Composable
-private fun BottomBarPlaceholder() {
-    Row(
-        modifier = Modifier
-            .height(IntrinsicSize.Min)
-            .background(ExtendedTheme.colors.bottomBar)
-            // 拦截点击事件
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {}
-            )
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(vertical = 8.dp)
-                .weight(1f)
-                .clip(RoundedCornerShape(6.dp))
-                .background(ExtendedTheme.colors.bottomBarSurface)
-                .padding(8.dp),
-        ) {
-            Text(
-                text = stringResource(id = R.string.tip_reply_thread),
-                style = MaterialTheme.typography.caption,
-                color = ExtendedTheme.colors.onBottomBarSurface,
-            )
-        }
-
-        BottomBarAgreeBtn(
-            hasAgreed = false,
-            agreeNum = 1,
-            onClick = {},
-            modifier = Modifier.fillMaxHeight()
-        )
-
-        Box(
-            modifier = Modifier.fillMaxHeight(),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.MoreVert,
-                contentDescription = stringResource(id = R.string.btn_more),
-                tint = ExtendedTheme.colors.textSecondary,
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 private fun ToggleButton(
@@ -733,6 +692,9 @@ fun ThreadPage(
     var waitLoadSuccessAndScrollToFirstReply by remember { mutableStateOf(scrollToReply) }
     var showFontScaleDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
+    // 快捷回复面板：与页面同 Window 的底部浮层，不跳转 ReplyPage
+    var quickReplyVisible by remember { mutableStateOf(false) }
+    var quickReplySending by remember { mutableStateOf(false) }
 
     if (showFontScaleDialog) {
         FontScaleDialog(onDismiss = { showFontScaleDialog = false })
@@ -1477,41 +1439,69 @@ fun ThreadPage(
                     )
                 },
                 bottomBar = {
-                    BottomBar(
-                        user = user,
-                        onClickReply = {
-                            navigator.navigate(
-                                ReplyPageDestination(
-                                    forumId = curForumId ?: 0,
-                                    forumName = forum?.get { name }.orEmpty(),
-                                    threadId = threadId,
-                                )
-                            )
-                        },
-                        onJumpToComments = {
-                            coroutineScope.launch {
-                                if (lazyListState.layoutInfo.totalItemsCount > 1) {
-                                    lazyListState.animateScrollToItem(1)
+                    if (!quickReplyVisible) {
+                        BottomBar(
+                            user = user,
+                            onClickReply = { quickReplyVisible = true },
+                            onJumpToComments = {
+                                coroutineScope.launch {
+                                    if (lazyListState.layoutInfo.totalItemsCount > 1) {
+                                        lazyListState.animateScrollToItem(1)
+                                    }
                                 }
-                            }
-                        },
-                        commentNum = (thread?.get { replyNum } ?: 0).toLong(),
-                        onClickMore = {
-                            if (bottomSheetState.isVisible) {
-                                closeBottomSheet()
-                            } else {
-                                openBottomSheet()
-                            }
-                        },
-                        modifier = Modifier
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {}
-                            )
-                    )
+                            },
+                            onAgree = {
+                                val firstPostId =
+                                    thread?.get { firstPostId }.takeIf { it != 0L }
+                                        ?: firstPost?.get { id }
+                                        ?: 0L
+                                if (firstPostId != 0L) {
+                                    viewModel.send(
+                                        ThreadUiIntent.AgreeThread(
+                                            threadId,
+                                            firstPostId,
+                                            !hasThreadAgreed
+                                        )
+                                    )
+                                }
+                            },
+                            onCollect = {
+                                if (isCollected) {
+                                    val fid = forum?.get { id } ?: forumId
+                                    val tbs = anti?.get { tbs }
+                                    if (fid != null) {
+                                        viewModel.send(
+                                            ThreadUiIntent.RemoveFavorite(threadId, fid, tbs)
+                                        )
+                                    }
+                                } else {
+                                    val readItem = lastVisibilityPost
+                                    if (readItem != null) {
+                                        viewModel.send(
+                                            ThreadUiIntent.AddFavorite(
+                                                threadId,
+                                                readItem.get { id },
+                                                readItem.get { floor }
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                            hasAgreed = hasThreadAgreed,
+                            agreeNum = threadAgreeNum,
+                            isCollected = isCollected,
+                            commentNum = (thread?.get { replyNum } ?: 0).toLong(),
+                            modifier = Modifier
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {}
+                                )
+                        )
+                    }
                 },
             ) { paddingValues ->
+                Box(modifier = Modifier.fillMaxSize()) {
                 ModalBottomSheetLayout(
                     sheetState = bottomSheetState,
                     sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
@@ -2043,6 +2033,61 @@ fun ThreadPage(
                         )
                     }
                 }
+                    if (quickReplyVisible) {
+                        // 点外部收起
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { quickReplyVisible = false }
+                                )
+                        )
+                        QuickReplyPanel(
+                            sending = quickReplySending,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .imePadding(),
+                            onDismiss = { quickReplyVisible = false },
+                            onOpenEditor = {
+                                quickReplyVisible = false
+                                navigator.navigate(
+                                    ReplyPageDestination(
+                                        forumId = curForumId ?: 0,
+                                        forumName = forum?.get { name }.orEmpty(),
+                                        threadId = threadId,
+                                    )
+                                )
+                            },
+                            onSend = { content ->
+                                val fid = curForumId
+                                val fname = forum?.get { name }
+                                if (fid == null || fname.isNullOrBlank()) {
+                                    context.toastShort("获取吧信息失败，请重试")
+                                } else if (!quickReplySending) {
+                                    // 防重复提交：发送中不接受新的发送
+                                    quickReplySending = true
+                                    coroutineScope.launch {
+                                        AddPostRepository.addPost(
+                                            content = content,
+                                            forumId = fid,
+                                            forumName = fname,
+                                            threadId = threadId,
+                                            tbs = curTbs,
+                                        ).catch {
+                                            quickReplySending = false
+                                            context.toastShort(it.getErrorMessage() ?: "回复失败")
+                                        }.collect {
+                                            quickReplySending = false
+                                            quickReplyVisible = false
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -2108,11 +2153,16 @@ private fun TopBar(
 private fun BottomBar(
     user: ImmutableHolder<User>,
     onClickReply: () -> Unit,
-    onClickMore: () -> Unit,
     onJumpToComments: () -> Unit,
+    onAgree: () -> Unit,
+    onCollect: () -> Unit,
     modifier: Modifier = Modifier,
+    hasAgreed: Boolean = false,
+    agreeNum: Long = 0L,
+    isCollected: Boolean = false,
     commentNum: Long = 0,
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier.background(ExtendedTheme.colors.threadBottomBar)
     ) {
@@ -2120,11 +2170,11 @@ private fun BottomBar(
             modifier = Modifier
                 .height(IntrinsicSize.Min)
                 .then(modifier)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (user.get { is_login } == 1 && !LocalContext.current.appPreferences.hideReply) {
+            if (user.get { is_login } == 1 && !context.appPreferences.hideReply) {
                 Avatar(
                     data = StringUtil.getAvatarUrl(user.get { portrait }),
                     size = Sizes.Tiny,
@@ -2133,19 +2183,24 @@ private fun BottomBar(
                         .padding(vertical = 8.dp)
                 )
 
+                // 评论框：点按在页面内弹快捷回复面板，不再跳 ReplyPage
                 Row(
                     modifier = Modifier
                         .padding(vertical = 8.dp)
                         .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
                         .background(ExtendedTheme.colors.bottomBarSurface)
                         .debounceClickable(onClick = onClickReply)
-                        .padding(8.dp),
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = stringResource(id = R.string.tip_reply_thread),
                         style = MaterialTheme.typography.caption,
                         color = ExtendedTheme.colors.onBottomBarSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             } else {
@@ -2156,36 +2211,161 @@ private fun BottomBar(
                 )
             }
 
+            BottomBarAgreeBtn(
+                hasAgreed = hasAgreed,
+                agreeNum = agreeNum,
+                onClick = onAgree,
+                modifier = Modifier.fillMaxHeight()
+            )
             BottomBarCommentBtn(
                 commentNum = commentNum,
                 onClick = onJumpToComments,
                 modifier = Modifier.fillMaxHeight()
             )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .debounceClickable(onClick = onClickMore)
-                    .padding(horizontal = 4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.MoreVert,
-                    contentDescription = stringResource(id = R.string.btn_more),
-                    tint = ExtendedTheme.colors.textSecondary,
-                )
-            }
+            BottomBarStarBtn(
+                isCollected = isCollected,
+                onClick = onCollect,
+                modifier = Modifier.fillMaxHeight()
+            )
         }
 
         Box(
             modifier = Modifier
-                .requiredHeightIn(min = if (LocalContext.current.appPreferences.liftUpBottomBar) 16.dp else 0.dp)
+                .requiredHeightIn(min = if (context.appPreferences.liftUpBottomBar) 16.dp else 0.dp)
         ) {
             Spacer(
                 modifier = Modifier
                     .windowInsetsBottomHeight(WindowInsets.navigationBars)
             )
         }
+    }
+}
+
+@Composable
+private fun BottomBarStarBtn(
+    isCollected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val color = if (isCollected) ExtendedTheme.colors.accent else ExtendedTheme.colors.textSecondary
+    val animatedColor by animateColorAsState(color, label = "starBtnColor")
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(0),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        colors = ButtonDefaults.buttonColors(
+            backgroundColor = ExtendedTheme.colors.bottomBar,
+            contentColor = animatedColor
+        ),
+        modifier = modifier
+    ) {
+        Icon(
+            imageVector = if (isCollected) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+            contentDescription = stringResource(id = R.string.title_collect_on),
+            modifier = Modifier
+                .align(Alignment.CenterVertically)
+                .size(22.dp)
+        )
+    }
+}
+
+/**
+ * 快捷回复面板：与页面同 Window 的底部浮层（不是 Dialog / 不是新 Window）。
+ * 键盘弹起时由 imePadding 整体上移；点外部、返回键、发送成功都会收起。
+ */
+@Composable
+private fun QuickReplyPanel(
+    sending: Boolean,
+    onSend: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onOpenEditor: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var text by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    MyBackHandler(enabled = true) { onDismiss() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .background(ExtendedTheme.colors.threadBottomBar)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(ExtendedTheme.colors.bottomBarSurface)
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (text.isEmpty()) {
+                    Text(
+                        text = stringResource(id = R.string.tip_reply_thread),
+                        style = MaterialTheme.typography.caption,
+                        color = ExtendedTheme.colors.onBottomBarSurface
+                    )
+                }
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    textStyle = MaterialTheme.typography.body2.copy(
+                        color = ExtendedTheme.colors.text
+                    ),
+                    cursorBrush = SolidColor(ExtendedTheme.colors.accent),
+                    maxLines = 4,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                )
+            }
+
+            IconButton(onClick = onOpenEditor) {
+                Icon(
+                    imageVector = Icons.Rounded.PhotoLibrary,
+                    contentDescription = stringResource(id = R.string.desc_photo),
+                    tint = ExtendedTheme.colors.textSecondary
+                )
+            }
+
+            Button(
+                onClick = { onSend(text.trim()) },
+                enabled = !sending && text.isNotBlank(),
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = ExtendedTheme.colors.primary,
+                    contentColor = ExtendedTheme.colors.onPrimary,
+                    disabledBackgroundColor = ExtendedTheme.colors.primary.copy(alpha = 0.4f),
+                    disabledContentColor = ExtendedTheme.colors.onPrimary.copy(alpha = 0.6f)
+                )
+            ) {
+                Text(
+                    text = if (sending) "发送中" else "发送",
+                    style = MaterialTheme.typography.caption
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "需要配图或表情时，点右侧图片按钮进入完整编辑器",
+            style = MaterialTheme.typography.caption,
+            color = ExtendedTheme.colors.textSecondary,
+            fontSize = 11.sp
+        )
     }
 }
 
@@ -2366,7 +2546,8 @@ fun PostCard(
                             Text(
                                 text = post.title,
                                 style = MaterialTheme.typography.subtitle1,
-                                fontSize = 15.sp
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
 

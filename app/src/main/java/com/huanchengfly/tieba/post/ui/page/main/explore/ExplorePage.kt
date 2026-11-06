@@ -1,4 +1,4 @@
-﻿package com.huanchengfly.tieba.post.ui.page.main.explore
+package com.huanchengfly.tieba.post.ui.page.main.explore
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -209,14 +209,21 @@ private fun TabText(
     text: String,
     selected: Boolean
 ) {
+    // Flux 顶部分段：选中态用更重的字重 + 收紧字距，未选中保持安静
     val style = MaterialTheme.typography.button.copy(
-        letterSpacing = 0.75.sp,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        fontSize = if (selected) 16.sp else 15.sp,
+        letterSpacing = if (selected) 0.2.sp else 0.4.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
         textAlign = TextAlign.Center
     )
     Text(
         text = text,
         style = style,
+        color = if (selected) {
+            ExtendedTheme.colors.onTopBar
+        } else {
+            ExtendedTheme.colors.onTopBar.copy(alpha = 0.55f)
+        },
         maxLines = 1,
         softWrap = false
     )

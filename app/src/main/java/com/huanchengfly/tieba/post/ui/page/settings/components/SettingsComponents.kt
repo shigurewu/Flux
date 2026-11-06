@@ -1,4 +1,4 @@
-package com.huanchengfly.tieba.post.ui.page.settings.components
+﻿package com.huanchengfly.tieba.post.ui.page.settings.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,9 +57,10 @@ internal fun SectionLabel(text: String, icon: ImageVector? = null) {
         }
         Text(
             text = text,
-            fontSize = 15.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = ExtendedTheme.colors.primary
+            letterSpacing = 0.4.sp,
+            color = ExtendedTheme.colors.textSecondary
         )
     }
 }
@@ -163,3 +164,4 @@ internal fun SwitchSettingRow(
         }
     )
 }
+

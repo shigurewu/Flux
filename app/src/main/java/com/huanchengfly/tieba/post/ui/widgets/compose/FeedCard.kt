@@ -79,6 +79,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.SpanStyle
@@ -124,6 +125,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.video.VideoPlayerControlle
 import com.huanchengfly.tieba.post.ui.widgets.compose.video.VideoPlayerSource
 import com.huanchengfly.tieba.post.ui.widgets.compose.video.rememberVideoPlayerController
 import com.huanchengfly.tieba.post.utils.DateTimeUtils
+import com.huanchengfly.tieba.post.utils.TiebaUtil
 import com.huanchengfly.tieba.post.utils.EmoticonUtil.emoticonString
 import com.huanchengfly.tieba.post.utils.ImageUtil
 import com.huanchengfly.tieba.post.utils.StringUtil
@@ -240,20 +242,26 @@ fun UserHeader(
 }
 
 /**
- * 吧名模式卡片头部：吧头像+吧名+相对时间（原版贴吧风格），点击进入所在吧。
- * 无吧头像数据时以圆底吧图标兜底。
+ * 吧名展示：接口返回的常是裸名（如 "f1"），展示时补成 "f1吧"；
+ * 已经带「吧」后缀的不重复追加。
+ */
+private fun String.asForumDisplayName(): String =
+    if (isBlank() || endsWith("吧")) this else this + "吧"
+
+/**
+ * 吧名模式卡片头部：吧头像 + 吧名 + 「关注 x · 贴子 y」（原版贴吧风格），点击进入所在吧。
+ * 没有人数数据时只显示吧名；作者模式仍走 UserHeader，不受影响。
  */
 @Composable
 private fun ForumHeader(
     forumName: String,
     forumAvatar: String?,
-    timeProvider: () -> Int,
+    memberNum: Int = 0,
+    postNum: Int = 0,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit = {},
 ) {
-    val context = LocalContext.current
-    val time = remember(timeProvider) { timeProvider() }
     UserHeader(
         avatar = {
             if (forumAvatar.isNullOrBlank()) {
@@ -281,19 +289,23 @@ private fun ForumHeader(
         },
         name = {
             Text(
-                text = forumName,
+                // 吧名统一补「吧」后缀：接口给的常是裸名（f1），原版贴吧显示为「f1吧」
+                text = forumName.asForumDisplayName(),
                 color = ExtendedTheme.colors.text
             )
         },
-        onClick = onClick,
-        desc = {
-            Text(
-                text = DateTimeUtils.getRelativeTimeString(
-                    context,
-                    time.toString()
+        desc = if (memberNum > 0 || postNum > 0) {
+            @Composable {
+                Text(
+                    text = buildString {
+                        if (memberNum > 0) append("关注 ${memberNum.getShortNumString()}")
+                        if (memberNum > 0 && postNum > 0) append("  ")
+                        if (postNum > 0) append("贴子 ${postNum.getShortNumString()}")
+                    }
                 )
-            )
-        },
+            }
+        } else null,
+        onClick = onClick,
         content = content,
         modifier = modifier
     )
@@ -314,8 +326,8 @@ fun Card(
 
     // 紧凑卡片：收窄留白与圆角，单屏容纳更多内容（issue #15）
     val compact = LocalContext.current.appPreferences.compactFeedCard
-    val cardCorner = if (compact) 16.dp else 20.dp
-    val verticalPadding = if (compact) 10.dp else 16.dp
+    val cardCorner = if (compact) 10.dp else 14.dp
+    val verticalPadding = if (compact) 10.dp else 14.dp
     val outerHorizontalPadding = if (compact) 6.dp else 8.dp
     val innerContentPadding = if (compact) PaddingValues(horizontal = 12.dp) else contentPadding
 
@@ -332,7 +344,7 @@ fun Card(
             // hairline 描边:与背景拉开卡片边界(M3 tonal 语言,无阴影)
             .border(
                 width = 0.5.dp,
-                color = ExtendedTheme.colors.divider.copy(alpha = 0.6f),
+                color = ExtendedTheme.colors.divider.copy(alpha = 0.45f),
                 shape = RoundedCornerShape(cardCorner)
             )
             .then(paddingModifier)
@@ -345,14 +357,23 @@ fun Card(
         ) {
             content()
         }
-        action?.invoke(this)
+        action?.let {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .height(0.5.dp)
+                    .background(ExtendedTheme.colors.divider.copy(alpha = 0.4f))
+            )
+            it(this)
+        }
     }
 }
 
 /** 信息流卡片列表纵向间距（紧凑卡片开启时收窄）。 */
 @Composable
 fun feedCardListSpacing(): Dp {
-    return if (LocalContext.current.appPreferences.compactFeedCard) 8.dp else 12.dp
+    return if (LocalContext.current.appPreferences.compactFeedCard) 8.dp else 10.dp
 }
 
 @Composable
@@ -391,47 +412,56 @@ fun ThreadContent(
     showTitle: Boolean = true,
     showAbstract: Boolean = true,
     isGood: Boolean = false,
-    maxLines: Int = 5,
+    maxLines: Int = 4,
     highlightKeywords: ImmutableList<String> = persistentListOf(),
 ) {
-    val content = buildAnnotatedString {
-        if (showTitle) {
-            withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                if (isGood) {
-                    withStyle(style = SpanStyle(color = ExtendedTheme.colors.accent)) {
-                        append(stringResource(id = R.string.tip_good))
-                    }
-                    append(" ")
-                }
-
-                if (tabName.isNotBlank()) {
-                    append(tabName)
-                    append(" | ")
-                }
-
-                append(title)
+    val titleText = buildAnnotatedString {
+        if (isGood) {
+            withStyle(style = SpanStyle(color = ExtendedTheme.colors.accent)) {
+                append(stringResource(id = R.string.tip_good))
             }
+            append(" ")
         }
-        if (showTitle && showAbstract) {
-            append('\n')
+        if (tabName.isNotBlank()) {
+            withStyle(style = SpanStyle(color = ExtendedTheme.colors.textSecondary)) {
+                append(tabName)
+            }
+            append("  ")
         }
-        if (showAbstract) {
-            append(abstractText.emoticonString)
+        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+            append(title)
         }
     }
 
-    HighlightText(
-        text = content,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .then(modifier),
-        fontSize = 15.sp,
-        lineSpacing = 0.8.sp,
-        overflow = TextOverflow.Ellipsis,
-        maxLines = maxLines,
-        style = MaterialTheme.typography.body1,
-        highlightKeywords = highlightKeywords
-    )
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        if (showTitle && title.isNotBlank()) {
+            HighlightText(
+                text = titleText,
+                fontSize = 17.sp,
+                lineSpacing = 0.6.sp,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 2,
+                style = MaterialTheme.typography.body1,
+                highlightKeywords = highlightKeywords
+            )
+        }
+        if (showAbstract && abstractText.isNotBlank()) {
+            HighlightText(
+                text = abstractText.emoticonString,
+                fontSize = 14.sp,
+                lineSpacing = 3.sp,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = maxLines,
+                style = MaterialTheme.typography.body1,
+                highlightKeywords = highlightKeywords
+            )
+        }
+    }
 }
 
 @Composable
@@ -513,7 +543,7 @@ fun ForumInfoChip(
             )
         }
         Text(
-            text = stringResource(id = R.string.title_forum_name, name),
+            text = name.asForumDisplayName(),
             style = MaterialTheme.typography.body2,
             color = ExtendedTheme.colors.onChip,
             fontSize = 12.sp,
@@ -626,11 +656,52 @@ private fun ThreadMedia(
                     }
                 }
             } else if (hasPhoto) {
-                val mediaWidthFraction = remember(isSinglePhoto, singleMediaFraction) {
-                    if (isSinglePhoto) singleMediaFraction else 1f
+                // 单图尺寸目标：接近双列网格单元格的观感，而不是整屏铺满。
+                // 规则：高度上限 = 36% 屏高；宽度随图片比例在 55%~100% 之间浮动，
+                // 竖图/超长截图会同时收窄并压到高度上限（Crop 裁掉尾部），横图仍铺满宽度。
+                val configuration = LocalConfiguration.current
+                val fullCardWidth = (configuration.screenWidthDp.dp - 32.dp)
+                val singleMediaWidth = fullCardWidth * singleMediaFraction
+                val maxSingleMediaHeight = configuration.screenHeightDp.dp * 0.36f
+                val singleRatio = remember(isSinglePhoto, medias) {
+                    val first = medias.firstOrNull()?.get()
+                    if (first != null && first.width > 0 && first.height > 0)
+                        first.width.toFloat() / first.height else 0f
                 }
-                val mediaAspectRatio = remember(isSinglePhoto) {
-                    if (isSinglePhoto) 2f else 3f
+                val mediaWidthFraction = remember(
+                    isSinglePhoto, singleMediaFraction, singleRatio,
+                    fullCardWidth, maxSingleMediaHeight
+                ) {
+                    if (!isSinglePhoto) 1f
+                    else if (singleRatio <= 0f) singleMediaFraction
+                    else {
+                        val ratio = singleRatio
+                        val wf = if (maxSingleMediaHeight > 0.dp)
+                            (maxSingleMediaHeight * ratio / fullCardWidth)
+                        else 1f
+                        wf.coerceIn(minOf(0.55f, singleMediaFraction), singleMediaFraction)
+                    }
+                }
+                val mediaAspectRatio = remember(
+                    isSinglePhoto, medias, mediaWidthFraction,
+                    fullCardWidth, maxSingleMediaHeight
+                ) {
+                    val first = medias.firstOrNull()?.get()
+                    val real = if (first != null && first.width > 0 && first.height > 0)
+                        first.width.toFloat() / first.height else 0f
+                    if (isSinglePhoto) {
+                        if (real <= 0f) 2f
+                        else {
+                            // 保证「宽度 / 比例」不超过高度上限：撞到上限的长图会被裁切而不是拉长
+                            val capRatio = if (maxSingleMediaHeight > 0.dp)
+                                (fullCardWidth * mediaWidthFraction / maxSingleMediaHeight) else 0f
+                            maxOf(real, capRatio)
+                        }
+                    } else {
+                        // 多图：等分网格，用首图比例估算单元格高度，保持网格不塌也不过分瘦长
+                        val cell = if (real > 0f) real.coerceIn(0.75f, 1.4f) else 1f
+                        min(medias.size, 3) * cell
+                    }
                 }
                 if (hideMedia) {
                     val photoViewData = remember(
@@ -1081,6 +1152,7 @@ fun FeedCard(
     onClickOriginThread: (OriginThreadInfo) -> Unit = {},
     dislikeAction: @Composable () -> Unit = {},
 ) {
+    val context = LocalContext.current
     Card(
         header = {
             // 吧名模式：头部显示所在吧而非作者（issue #13）
@@ -1091,7 +1163,8 @@ fun FeedCard(
                 ForumHeader(
                     forumName = forumInfo?.get { name } ?: item.get { forumName },
                     forumAvatar = forumInfo?.get { avatar },
-                    timeProvider = { item.get { lastTimeInt } },
+                    memberNum = forumInfo?.get { memberNum } ?: 0,
+                    postNum = forumInfo?.get { postNum } ?: 0,
                     onClick = {
                         forumInfo?.let { onClickForum(it.get()) }
                     },
@@ -1150,7 +1223,14 @@ fun FeedCard(
             ) {
                 ThreadShareBtn(
                     shareNum = item.get { shareNum }.toString(),
-                    onClick = {},
+                    onClick = {
+                        // 之前这里是空的 onClick，点了没反应（动态页分享失效）
+                        TiebaUtil.shareText(
+                            context,
+                            "https://tieba.baidu.com/p/${item.get { id }}",
+                            item.get { title }
+                        )
+                    },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -1186,6 +1266,7 @@ fun FeedCard(
     onClickForum: (name: String) -> Unit = {},
     onClickOriginThread: (OriginThreadInfo) -> Unit = {},
 ) {
+    val context = LocalContext.current
     Card(
         header = {
             // 吧名模式：头部显示所在吧而非作者（issue #13）
@@ -1193,7 +1274,6 @@ fun FeedCard(
                 ForumHeader(
                     forumName = item.get { threadInfo.forumName },
                     forumAvatar = item.get { threadInfo.avatar },
-                    timeProvider = { item.get { threadInfo.createTime.toInt() } },
                     onClick = { onClickForum(item.get { threadInfo.forumName }) },
                 )
             } else {
@@ -1237,7 +1317,14 @@ fun FeedCard(
             ) {
                 ThreadShareBtn(
                     shareNum = item.get { threadInfo.shareNum }.toString(),
-                    onClick = {},
+                    onClick = {
+                        val info = item.get { threadInfo }
+                        TiebaUtil.shareText(
+                            context,
+                            "https://tieba.baidu.com/p/${info.id}",
+                            info.title
+                        )
+                    },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -1272,6 +1359,7 @@ fun FeedCard(
     onClickOriginThread: (OriginThreadInfo) -> Unit = {},
     headerAction: @Composable () -> Unit = {},
 ) {
+    val context = LocalContext.current
     Card(
         header = {
             // 吧名模式：头部显示所在吧而非作者（issue #13）
@@ -1279,7 +1367,6 @@ fun FeedCard(
                 ForumHeader(
                     forumName = item.get { forum_name },
                     forumAvatar = null,
-                    timeProvider = { item.get { create_time } },
                     onClick = { onClickForum(item.get { forum_name }) },
                 ) { headerAction() }
             } else {
@@ -1340,7 +1427,13 @@ fun FeedCard(
             ) {
                 ThreadShareBtn(
                     shareNum = item.get { share_num }.toString(),
-                    onClick = {},
+                    onClick = {
+                        TiebaUtil.shareText(
+                            context,
+                            "https://tieba.baidu.com/p/${item.get { thread_id }}",
+                            item.get { title }
+                        )
+                    },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -1510,3 +1603,6 @@ fun FeedCardPreview() {
         modifier = Modifier.background(ExtendedTheme.colors.card)
     )
 }
+
+
+

@@ -2,9 +2,9 @@
 <resources>
     <color name="ic_launcher_new_background">#FFF4F7FC</color>
     <color name="ic_launcher_new_invert_background">#FFFFFFFF</color>
-    <color name="ic_launcher_background">#FF2E60B0</color>
+    <color name="ic_launcher_background">#FF4F46E5</color>
 
-    <color name="ic_launcher_new_themed_background">#FF5588D7</color>
+    <color name="ic_launcher_new_themed_background">#FFEEF2FF</color>
     <color name="ic_launcher_new_themed_foreground_1">#FFA7C5F0</color>
     <color name="ic_launcher_new_themed_foreground_2">#FF538ACE</color>
 

@@ -99,7 +99,7 @@ open class AppPreferencesUtils private constructor(ctx: Context) {
 
     // 信息流卡片头部显示所在吧名（原版贴吧模式），关闭时显示作者昵称
     var feedCardShowForumName by DataStoreDelegates.boolean(
-        defaultValue = false,
+        defaultValue = true,
         key = "feed_card_show_forum_name"
     )
 

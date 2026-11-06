@@ -47,7 +47,7 @@ class ApkDownloader @Inject constructor(
             val part = File(dir, "$fileName.part")
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "FluxTie/${BuildConfig.VERSION_NAME}")
+                .header("User-Agent", "Flux/${BuildConfig.VERSION_NAME}")
                 .build()
             val call = client.newCall(request)
             try {

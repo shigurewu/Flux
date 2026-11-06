@@ -1,4 +1,4 @@
-package com.huanchengfly.tieba.post.ui.widgets.compose
+﻿package com.huanchengfly.tieba.post.ui.widgets.compose
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.Icon
+import androidx.compose.material.LocalContentColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.Composable
@@ -118,20 +119,23 @@ fun RefreshCircleIcon(
             rotation.snapTo(0f)
         }
     }
+    // 颜色跟随所在导航栏的内容色：浅色主题为深色描边，深色主题自动转为浅色
+    val contentColor = LocalContentColor.current
     Box(
         modifier = modifier
             .size(22.dp)
             .graphicsLayer { rotationZ = rotation.value }
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.16f))
-            .border(1.dp, Color.White.copy(alpha = 0.45f), CircleShape),
+            .background(contentColor.copy(alpha = 0.10f))
+            .border(1.dp, contentColor.copy(alpha = 0.55f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = Icons.Rounded.Refresh,
             contentDescription = "刷新",
             modifier = Modifier.size(14.dp),
-            tint = Color.White.copy(alpha = 0.92f)
+            tint = contentColor
         )
     }
 }
+

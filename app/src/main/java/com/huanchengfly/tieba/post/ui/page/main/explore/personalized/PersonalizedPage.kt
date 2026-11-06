@@ -1,4 +1,4 @@
-﻿package com.huanchengfly.tieba.post.ui.page.main.explore.personalized
+package com.huanchengfly.tieba.post.ui.page.main.explore.personalized
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,6 +130,7 @@ fun PersonalizedPage(
         prop1 = PersonalizedUiState::hiddenThreadIds,
         initial = persistentListOf()
     )
+    val refreshScope = rememberCoroutineScope()
     val pullRefreshState = rememberGlassPullRefreshState(
         refreshing = isRefreshing,
         onRefresh = { viewModel.send(PersonalizedUiIntent.Refresh) }
@@ -158,7 +160,8 @@ fun PersonalizedPage(
         if(!isRefreshing) viewModel.send(PersonalizedUiIntent.Refresh)
     }
 
-    // 点击底栏「动态」：先平滑回到顶部，再触发一次刷新（与下拉共用同一刷新状态）
+    // 点击底栏「动态」：回顶 → 圆圈拉下来 → 旋转并刷新 → 提示 → 收回
+    // 与手动下拉复用同一个 GlassPullRefreshState，所以同一时刻只有一套动画在动
     val tabReselect = LocalTabReselect.current
     LaunchedEffect(tabReselect.tick) {
         if (tabReselect.tick > 0 && tabReselect.tabId == "explore") {
@@ -166,10 +169,10 @@ fun PersonalizedPage(
             val notAtTop = lazyListState.firstVisibleItemIndex > 0 ||
                     lazyListState.firstVisibleItemScrollOffset > 0
             if (notAtTop) {
-                // 等滚动结束再发请求，避免「滚到一半就开始刷新」
+                // 等滚动结束再开始动画，避免「滚到一半圆圈就下来」
                 lazyListState.animateScrollToItem(0)
             }
-            viewModel.send(PersonalizedUiIntent.Refresh)
+            pullRefreshState.animateRefresh()
         }
     }
 
@@ -280,7 +283,15 @@ fun PersonalizedPage(
                             )
                         )
                     },
-                    onRefresh = { viewModel.send(PersonalizedUiIntent.Refresh) },
+                    // 「上次阅读到此处」的刷新入口：与底栏按钮、手动下拉共用同一套圆圈动画
+                    onRefresh = {
+                        refreshScope.launch {
+                            // 回顶与刷新并行：列表立刻开始上滑，刷新同时进行，
+                            // 避免「先干等刷新结束、再突然位移」那种不跟手的感觉
+                            launch { lazyListState.animateScrollToItem(0) }
+                            pullRefreshState.animateRefresh()
+                        }
+                    },
                     onOpenForum = { navigator.navigate(ForumPageDestination(it)) },
                     onClickUser = { navigator.navigate(UserProfilePageDestination(it.id)) }
                 )
@@ -442,5 +453,6 @@ private fun RefreshTip(
         )
     }
 }
+
 
 

@@ -1,4 +1,4 @@
-package com.huanchengfly.tieba.post.ui.widgets.compose
+﻿package com.huanchengfly.tieba.post.ui.widgets.compose
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eygraber.compose.placeholder.PlaceholderHighlight
@@ -83,16 +84,17 @@ fun UserHeader(
         ) {
             avatar()
         }
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             ProvideTextStyle(
                 value = MaterialTheme.typography.subtitle1.merge(
                     TextStyle(
                         color = ExtendedTheme.colors.text,
-                        fontSize = 13.sp
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 )
             ) {
@@ -103,7 +105,8 @@ fun UserHeader(
                     value = MaterialTheme.typography.caption.merge(
                         TextStyle(
                             color = ExtendedTheme.colors.textSecondary,
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            letterSpacing = 0.1.sp
                         )
                     )
                 ) {

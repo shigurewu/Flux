@@ -82,7 +82,7 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val REPO_URL = "https://github.com/makise2060/FluxTie"
+private const val REPO_URL = "https://github.com/shigurewu/Flux"
 
 @Destination
 @Composable
@@ -211,7 +211,7 @@ fun AboutPage(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "FluxTie",
+                            text = "Flux",
                             style = MaterialTheme.typography.h4,
                             fontWeight = FontWeight.Black
                         )

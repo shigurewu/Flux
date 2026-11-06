@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo.png" width="112" alt="Flux" />
+</p>
+
 # Flux
 
 一个基于 [FluxTie](https://github.com/makise2060/FluxTie)（上游基于 [TiebaLite](https://github.com/huanchengfly/tieba-post)）的个人分支，

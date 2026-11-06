@@ -114,7 +114,7 @@ private val FluidBuoyancyEasing = CubicBezierEasing(0.18f, 1.0f, 0.22f, 1.0f)
  * 应用内启动屏（方案 C 一镜到底流体编排终极版）：
  * 1. 物理同源锚定（0~100ms）：Logo 严格处于屏幕物理中心（160dp 满态），零偏差承接系统 SplashScreen 双水滴撞击碰撞终态。
  * 2. 流体浮力升腾（100~800ms）：Logo 伴随流体微摇摆（-2.2° -> +0.8° -> 0°）平滑升腾至 -142dp，等比收敛至 83dp 头部徽标。
- * 3. 品牌字间距舒展与徽章液态拉伸展开（320~860ms）：FluxTie 英文自 1.sp 优雅扩展至 3.5.sp；“为兴趣而生”专属流光徽章从中心水滴向两侧液态延展，留下 78dp 黄金留白。
+ * 3. 品牌字间距舒展与徽章液态拉伸展开（320~860ms）：Flux 英文自 1.sp 优雅扩展至 3.5.sp；“为兴趣而生”专属流光徽章从中心水滴向两侧液态延展，留下 78dp 黄金留白。
  * 4. 极致退场：首页数据就绪后轻柔升腾淡出，底栏与帖子流迎面涌出。
  */
 @Composable
@@ -148,7 +148,7 @@ fun AppSplashOverlay() {
         label = "logoRotation"
     )
 
-    // 2. 品牌大标 FluxTie 字间距优雅延展 (从凝聚 1.sp 展开到大气舒展的 3.5.sp)
+    // 2. 品牌大标 Flux 字间距优雅延展 (从凝聚 1.sp 展开到大气舒展的 3.5.sp)
     val brandLetterSpacing by animateFloatAsState(
         targetValue = if (isHeaderStage) 3.5f else 1.0f,
         animationSpec = tween(durationMillis = 560, delayMillis = 200, easing = FluidBuoyancyEasing),
@@ -264,7 +264,7 @@ fun AppSplashOverlay() {
             ) {
                 // 1. 品牌英文大标 (动态字间距舒展)
                 Text(
-                    text = "FluxTie",
+                    text = "Flux",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = brandLetterSpacing.sp,

@@ -1,4 +1,4 @@
-﻿package com.huanchengfly.tieba.post.ui.page.main
+package com.huanchengfly.tieba.post.ui.page.main
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -80,7 +80,7 @@ import com.huanchengfly.tieba.post.ui.page.main.explore.ExplorePage
 import com.huanchengfly.tieba.post.ui.page.main.home.HomePage
 import com.huanchengfly.tieba.post.ui.page.main.home.HomeUiIntent
 import com.huanchengfly.tieba.post.ui.page.main.home.HomeViewModel
-import com.huanchengfly.tieba.post.ui.page.main.notifications.NotificationsPage
+import com.huanchengfly.tieba.post.ui.page.main.notifications.NotificationsHubPage
 import com.huanchengfly.tieba.post.ui.page.main.user.UserPage
 import com.huanchengfly.tieba.post.ui.utils.DevicePosture
 import com.huanchengfly.tieba.post.ui.utils.MainNavigationContentPosition
@@ -169,6 +169,10 @@ fun MainPage(
         key = booleanPreferencesKey("hideExplore"),
         defaultValue = LocalContext.current.appPreferences.hideExplore
     )
+    val hideNotificationDot by rememberPreferenceAsState(
+        key = booleanPreferencesKey("hideNotificationDot"),
+        defaultValue = false
+    )
     val defaultStart by rememberPreferenceAsState(
         key = intPreferencesKey("defaultStart"),
         defaultValue = LocalContext.current.appPreferences.defaultStart
@@ -245,13 +249,13 @@ fun MainPage(
                         AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_animated_rounded_notifications)
                     },
                     title = { stringResource(id = R.string.title_notifications) },
-                    badge = messageCount > 0,
+                    badge = messageCount > 0 && !hideNotificationDot,
                     badgeText = "$messageCount",
                     onClick = {
                         viewModel.send(MainUiIntent.NewMessage.Clear)
                     },
                     content = {
-                        NotificationsPage()
+                        NotificationsHubPage()
                     }
                 ),
                 NavigationItem(

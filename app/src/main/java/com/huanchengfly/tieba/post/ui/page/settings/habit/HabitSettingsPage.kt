@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.ImageSearch
 import androidx.compose.material.icons.outlined.NightsStay
+import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PhotoSizeSelectActual
 import androidx.compose.material.icons.outlined.SecurityUpdateWarning
 import androidx.compose.material.icons.outlined.SpeakerNotesOff
@@ -267,6 +268,14 @@ fun HabitSettingsPage(
             }
             item {
                 AppearanceCard {
+                    SwitchSettingRow(
+                        icon = Icons.Outlined.NotificationsOff,
+                        title = stringResource(id = R.string.title_hide_notification_dot),
+                        summary = stringResource(id = R.string.summary_hide_notification_dot),
+                        key = "hideNotificationDot",
+                        defaultValue = false,
+                    )
+                    CardDivider()
                     SwitchSettingRow(
                         icon = Icons.Outlined.AddModerator,
                         title = stringResource(id = R.string.settings_incognito_mode),

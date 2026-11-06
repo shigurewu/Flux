@@ -75,7 +75,7 @@ class UpdateChecker @Inject constructor(
         }
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "FluxTie/${BuildConfig.VERSION_NAME}")
+            .header("User-Agent", "Flux/${BuildConfig.VERSION_NAME}")
             .header("Accept", "application/vnd.github+json")
             .build()
         client.newCall(request).execute().use { response ->
@@ -120,17 +120,17 @@ class UpdateChecker @Inject constructor(
     }
 
     /**
-     * 资产匹配容错：CI 构建产物名为 `FluxTie-v{版本}+{sha7}.apk`（本地构建无 +sha）。
+     * 资产匹配容错：CI 构建产物名为 `Flux-v{版本}+{sha7}.apk`（本地构建无 +sha）。
      */
     private fun GitHubRelease.findApk(version: String): GitHubAsset? {
-        val exact = "FluxTie-v$version.apk"
+        val exact = "Flux-v$version.apk"
         return assets.firstOrNull { it.name == exact }
             ?: assets.firstOrNull {
-                it.name.startsWith("FluxTie-v$version", ignoreCase = true) &&
+                it.name.startsWith("Flux-v$version", ignoreCase = true) &&
                     it.name.endsWith(".apk", ignoreCase = true)
             }
             ?: assets.firstOrNull {
-                it.name.startsWith("FluxTie-v", ignoreCase = true) &&
+                it.name.startsWith("Flux-v", ignoreCase = true) &&
                     it.name.endsWith(".apk", ignoreCase = true)
             }
     }
@@ -145,7 +145,7 @@ class UpdateChecker @Inject constructor(
     }
 
     companion object {
-        private const val API_BASE = "https://api.github.com/repos/makise2060/FluxTie"
+        private const val API_BASE = "https://api.github.com/repos/shigurewu/Flux"
         private const val CACHE_TTL_MS = 60 * 60 * 1000L // 1h
     }
 }
