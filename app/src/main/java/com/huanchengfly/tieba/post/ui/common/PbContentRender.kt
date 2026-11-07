@@ -30,12 +30,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +80,8 @@ data class TextContentRender(
     val lineHeight: TextUnit = TextUnit.Unspecified,
     val color: Color = Color.Unspecified,
     val fontWeight: FontWeight? = null,
+    /** 主楼排版：关掉 Android 原生字体内边距，并让行高按居中裁剪，视觉更均匀 */
+    val tightLineHeight: Boolean = false,
 ) : PbContentRender {
     constructor(text: String) : this(AnnotatedString(text))
 
@@ -87,12 +91,24 @@ data class TextContentRender(
 
     @Composable
     override fun Render() {
+        val baseStyle = MaterialTheme.typography.body1
+        val style = if (tightLineHeight) {
+            baseStyle.copy(
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                lineHeightStyle = LineHeightStyle(
+                    alignment = LineHeightStyle.Alignment.Center,
+                    trim = LineHeightStyle.Trim.None
+                )
+            )
+        } else {
+            baseStyle
+        }
         PbContentText(
             text = text,
             fontSize = fontSize,
             color = color,
             fontWeight = fontWeight,
-            style = MaterialTheme.typography.body1,
+            style = style,
             lineHeight = lineHeight,
             lineSpacing = lineSpacing,
             letterSpacing = letterSpacing

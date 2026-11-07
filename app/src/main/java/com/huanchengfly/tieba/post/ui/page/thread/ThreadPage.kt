@@ -1,5 +1,6 @@
 package com.huanchengfly.tieba.post.ui.page.thread
 
+import android.os.Build
 import android.util.Log
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -12,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -101,6 +103,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
@@ -2543,10 +2546,23 @@ fun PostCard(
                 },
                 content = {
                     // 排版只作用于帖子详情的主楼（floor <= 1），信息流卡片与评论区完全不受影响。
-                    // 正文：14.5sp / 行高 1.7(24.65sp) / 字距 0 / #3C3C3C；并按 \n 拆成真正的段落块。
+                    // BoxWithConstraints：按容器真实宽度动态算字号，让每行稳定排下约 19 个汉字。
+                    BoxWithConstraints {
                     val isLightTheme = MaterialTheme.colors.isLight
-                    val bodyColor = if (isLightTheme) Color(0xFF3C3C3C) else Color(0xFFE6E6E6)
+                    val bodyColor = if (isLightTheme) Color(0xFF3C3C3C) else Color(0xFFA8A8A8)
                     val titleColor = if (isLightTheme) Color(0xFF111111) else Color(0xFFF5F5F5)
+                    // 除以 fontScale：抵消系统字体缩放，避免用户调大字体后每行字数变少
+                    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(0.1f)
+                    val bodyFontSize = (maxWidth.value / CharsPerLine / fontScale)
+                        .coerceIn(13.5f, 16f)
+                        .sp
+                    val bodyLineHeight = bodyFontSize * LineHeightRatio
+                    // Android 10+ 尝试可变字重 350；系统字体不支持时自然回落到 400
+                    val bodyWeight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        FontWeight(350)
+                    } else {
+                        FontWeight.Normal
+                    }
                     // 标题以全角左括号/引号开头时做悬挂标点：标点向左探出半字，
                     // 让第一个汉字与下方正文严格左对齐
                     val titleIndent = remember(post.title) {
@@ -2556,19 +2572,20 @@ fun PostCard(
                             TextIndent.None
                         }
                     }
-                    val bodyRenders = remember(contentRenders, post.floor, bodyColor) {
+                    val bodyRenders = remember(contentRenders, post.floor, bodyColor, bodyFontSize) {
                         if (post.floor <= 1) {
                             contentRenders.flatMap { render ->
                                 if (render is TextContentRender) {
                                     render.text.splitIntoParagraphs().map { paragraph ->
                                         render.copy(
                                             text = paragraph,
-                                            fontSize = 14.5.sp,
-                                            lineHeight = 24.65.sp,   // 14.5sp × 1.7
+                                            fontSize = bodyFontSize,
+                                            lineHeight = bodyLineHeight,
                                             lineSpacing = 0.sp,
                                             letterSpacing = 0.sp,
                                             color = bodyColor,
-                                            fontWeight = FontWeight.Normal
+                                            fontWeight = bodyWeight,
+                                            tightLineHeight = true
                                         )
                                     }
                                 } else listOf(render)
@@ -2621,6 +2638,7 @@ fun PostCard(
                             }
                         }
                         waterfallImages?.let { PicWaterfallContentRender(it) }
+                    }
                     }
 
                     if (showSubPosts && post.sub_post_number > 0 && subPosts.isNotEmpty() && !immersiveMode) {
@@ -3131,4 +3149,10 @@ private fun AnnotatedString.splitIntoParagraphs(): List<AnnotatedString> {
 private val HangingPunctuation = setOf(
     '『', '「', '【', '（', '《', '〈', '〔', '［', '“', '‘', '{', '['
 )
+
+/** 主楼正文每行目标汉字数：按容器宽度反推字号 */
+private const val CharsPerLine = 19f
+
+/** 主楼正文行高倍数 */
+private const val LineHeightRatio = 1.7f
 
