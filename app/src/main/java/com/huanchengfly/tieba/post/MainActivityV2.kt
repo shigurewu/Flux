@@ -356,6 +356,12 @@ class MainActivityV2 : BaseComposeActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 从「安装未知应用」系统页返回时，若已授权则继续安装更新
+        runCatching { updateManager.onActivityResumed(this) }
+    }
+
     override fun onStart() {
         super.onStart()
         runCatching {

@@ -1,5 +1,13 @@
 # 更新日志
 
+## [1.3.10] - 2026-11-07 · 安装
+
+### 修复
+
+- 「立即安装」只显示权限请求、不跳系统设置：此前用 XXPermissions 请求 `REQUEST_INSTALL_PACKAGES`，这类特殊权限在部分 ROM 上不会真正打开设置页。
+  现改为直接 `startActivity` 拉起 `ACTION_MANAGE_UNKNOWN_APP_SOURCES`，失败时退回应用详情页，再失败则提示并跳发布页。
+- 从系统设置返回后自动继续安装：新增 `UpdateManager.onActivityResumed`，主界面 `onResume` 时检查授权状态，已授权就直接拉起安装器，不用再点一次。
+
 ## [1.3.9] - 2026-11-07 · 收字
 
 帖子详情主楼的排版再收紧一档，让一些较长的句子能整行排下。

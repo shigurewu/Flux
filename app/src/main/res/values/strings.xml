@@ -713,6 +713,7 @@
     <string name="summary_about_tiebalite">FluxTie 的上游 · huanchengfly/tieba-post</string>
     <string name="tip_about_thanks">本项目绝大多数功能与实现都来自上游，功劳归原作者。这里只做了少量个人自用的小改动。</string>
     <string name="summary_check_update_self">检查本项目（shigurewu/Flux）的最新版本</string>
+    <string name="tip_open_settings_failed">无法打开系统设置，请手动允许「安装未知应用」后重试</string>
     <string name="msg_action_reply_you">回复了你</string>
     <string name="msg_action_mention_you">提到了你</string>
     <string name="msg_action_agree_you">赞了你的回复</string>

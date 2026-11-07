@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.toastShort
@@ -214,9 +216,15 @@ class UpdateManager @Inject constructor(
 
     // ── 安装 ──────────────────────────────────────────────
 
+    /** 等待用户从系统设置页返回后继续安装的文件 */
+    private var pendingInstall: File? = null
+
     /**
-     * 安装已下载的更新；无「安装未知应用」授权时走两段式引导，拒绝则兜底跳发布页。
-     * 外面再包一层兜底：权限页打不开、FileProvider 失败等任何异常都退回发布页，不再闪退。
+     * 安装已下载的更新。
+     *
+     * 未授予「安装未知应用」时直接拉起系统设置页（不再走 XXPermissions：
+     * 这类特殊权限在部分 ROM 上请求后不会跳转），用户返回后由 [onActivityResumed] 自动继续。
+     * 任何异常都退回发布页，不崩溃。
      */
     fun installOrPrompt(activity: Activity) {
         runCatching { doInstall(activity) }.onFailure {
@@ -240,15 +248,44 @@ class UpdateManager @Inject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !activity.packageManager.canRequestPackageInstalls()
         ) {
-            activity.requestPermission {
-                permissions = listOf(PermissionUtils.REQUEST_INSTALL_PACKAGES)
-                description = activity.getString(R.string.desc_permission_install_update)
-                onGranted = { startInstall(activity, downloaded.file) }
-                onDenied = { openReleasesPage() }
-            }
-        } else {
-            startInstall(activity, downloaded.file)
+            pendingInstall = downloaded.file
+            openUnknownSourcesSettings(activity)
+            return
         }
+        startInstall(activity, downloaded.file)
+    }
+
+    /** 从系统设置返回时调用：若已授权则继续安装 */
+    fun onActivityResumed(activity: Activity) {
+        val file = pendingInstall ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !activity.packageManager.canRequestPackageInstalls()
+        ) {
+            return
+        }
+        pendingInstall = null
+        runCatching { startInstall(activity, file) }.onFailure {
+            Log.w("UpdateManager", "install failed", it)
+            openReleasesPage()
+        }
+    }
+
+    /**
+     * 拉起「安装未知应用」系统页；部分 ROM 没有该页时退回应用详情页。
+     */
+    private fun openUnknownSourcesSettings(activity: Activity) {
+        val pkgUri = Uri.parse("package:${activity.packageName}")
+        val candidates = ArrayList<Intent>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            candidates.add(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, pkgUri))
+        }
+        candidates.add(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkgUri))
+        for (intent in candidates) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { activity.startActivity(intent) }.isSuccess) return
+        }
+        Toast.makeText(activity, R.string.tip_open_settings_failed, Toast.LENGTH_LONG).show()
+        openReleasesPage()
     }
 
     private fun startInstall(context: Context, file: File) {
