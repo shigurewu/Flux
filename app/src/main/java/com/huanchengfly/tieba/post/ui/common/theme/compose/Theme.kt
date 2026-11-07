@@ -71,6 +71,12 @@ val LocalExtendedColors = staticCompositionLocalOf {
     )
 }
 
+/** 深色模式统一正文色（降低纯白刺眼感） */
+private val DarkModeTextColor = Color(0xFFA8A8A8)
+
+/** 深色模式次级文字，比正文再暗一档以保留层级 */
+private val DarkModeTextSecondaryColor = Color(0xFF8A8A8A)
+
 
 @SuppressLint("ConflictingOnColor")
 fun getColorPalette(
@@ -89,6 +95,8 @@ fun getColorPalette(
             background = extendedColors.background,
             onBackground = extendedColors.text,
             surface = extendedColors.card,
+            // 卡片内的文字也走统一的正文色，否则 Material 组件会退回纯白
+            onSurface = extendedColors.text,
         )
     } else {
         lightColors(
@@ -100,6 +108,7 @@ fun getColorPalette(
             background = extendedColors.background,
             onBackground = extendedColors.text,
             surface = extendedColors.card,
+            onSurface = extendedColors.text,
         )
     }
 }
@@ -522,6 +531,11 @@ fun TiebaLiteTheme(
         key = booleanPreferencesKey("useDynamicColorTheme"),
         defaultValue = false
     )
+    // 深色下用柔和灰字（默认开）；关掉则恢复主题原始的纯白正文
+    val softDarkText by context.dataStore.collectPreferenceAsState(
+        key = booleanPreferencesKey("soft_dark_text"),
+        defaultValue = true
+    )
     val isDarkColorPalette by remember {
         derivedStateOf {
             ThemeUtil.isNightMode(theme)
@@ -555,6 +569,17 @@ fun TiebaLiteTheme(
         )
         useDynamicTheme -> getDynamicColor(theme, dynamicTonalPalette(context))
         else -> getThemeColorForTheme(theme)
+    }.let { base ->
+        // 深色模式下统一正文色：与帖子详情主楼保持一致，
+        // 避免大面积纯白在暗色背景上过于刺眼；次级文字同步降一档保持层级
+        if (isDarkColorPalette && softDarkText) {
+            base.copy(
+                text = DarkModeTextColor,
+                textSecondary = DarkModeTextSecondaryColor,
+            )
+        } else {
+            base
+        }
     }
 
     val colors = getColorPalette(isDarkColorPalette, extendedColors)

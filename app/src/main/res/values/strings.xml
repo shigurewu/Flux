@@ -717,5 +717,7 @@
     <string name="msg_action_reply_you">回复了你</string>
     <string name="msg_action_mention_you">提到了你</string>
     <string name="msg_action_agree_you">赞了你的回复</string>
+    <string name="title_soft_dark_text">深色模式柔和文字</string>
+    <string name="summary_soft_dark_text">深色下正文改用柔和灰色而非纯白；关闭则恢复纯白</string>
 </resources>
 

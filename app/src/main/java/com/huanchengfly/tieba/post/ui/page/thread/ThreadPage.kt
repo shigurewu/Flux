@@ -2549,7 +2549,7 @@ fun PostCard(
                     // BoxWithConstraints：按容器真实宽度动态算字号，让每行稳定排下约 19 个汉字。
                     BoxWithConstraints {
                     val isLightTheme = MaterialTheme.colors.isLight
-                    val bodyColor = if (isLightTheme) Color(0xFF3C3C3C) else Color(0xFFA8A8A8)
+                    val bodyColor = if (isLightTheme) Color(0xFF3C3C3C) else MaterialTheme.colors.onBackground
                     val titleColor = if (isLightTheme) Color(0xFF111111) else Color(0xFFF5F5F5)
                     // 除以 fontScale：抵消系统字体缩放，避免用户调大字体后每行字数变少
                     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(0.1f)

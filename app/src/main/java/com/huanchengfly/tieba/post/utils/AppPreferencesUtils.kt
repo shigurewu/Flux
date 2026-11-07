@@ -103,6 +103,12 @@ open class AppPreferencesUtils private constructor(ctx: Context) {
         key = "feed_card_show_forum_name"
     )
 
+    // 深色模式柔和文字：正文用 #A8A8A8 而非纯白，关闭则恢复主题原色
+    var softDarkText by DataStoreDelegates.boolean(
+        defaultValue = true,
+        key = "soft_dark_text"
+    )
+
     // 启动屏一镜到底动画（关闭则系统启动屏揭开后直接进主页）
     var splashAnimationEnabled by DataStoreDelegates.boolean(
         defaultValue = true,

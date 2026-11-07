@@ -478,6 +478,14 @@ fun CustomSettingsPage(
                     )
                     CardDivider()
                     SwitchSettingRow(
+                        icon = Icons.Rounded.DarkMode,
+                        title = stringResource(id = R.string.title_soft_dark_text),
+                        summary = stringResource(id = R.string.summary_soft_dark_text),
+                        key = "soft_dark_text",
+                        defaultValue = true,
+                    )
+                    CardDivider()
+                    SwitchSettingRow(
                         icon = Icons.Rounded.FormatColorFill,
                         title = stringResource(id = R.string.tip_toolbar_primary_color),
                         summary = stringResource(id = R.string.tip_toolbar_primary_color_summary),
