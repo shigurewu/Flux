@@ -86,6 +86,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
@@ -412,7 +413,7 @@ fun ThreadContent(
     showTitle: Boolean = true,
     showAbstract: Boolean = true,
     isGood: Boolean = false,
-    maxLines: Int = 4,
+    maxLines: Int = 3,
     highlightKeywords: ImmutableList<String> = persistentListOf(),
 ) {
     val titleText = buildAnnotatedString {
@@ -454,7 +455,10 @@ fun ThreadContent(
             HighlightText(
                 text = abstractText.emoticonString,
                 fontSize = 14.sp,
-                lineSpacing = 3.sp,
+                // 列表页行距 1.55（14sp × 1.55 ≈ 22sp），比详情页紧，控制卡片高度
+                lineHeight = 22.sp,
+                lineSpacing = 0.sp,
+                textAlign = TextAlign.Start,
                 overflow = TextOverflow.Ellipsis,
                 maxLines = maxLines,
                 style = MaterialTheme.typography.body1,

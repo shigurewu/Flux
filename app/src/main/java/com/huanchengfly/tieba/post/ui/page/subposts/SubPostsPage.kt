@@ -79,6 +79,8 @@ import com.huanchengfly.tieba.post.arch.collectPartialAsState
 import com.huanchengfly.tieba.post.arch.onEvent
 import com.huanchengfly.tieba.post.arch.pageViewModel
 import com.huanchengfly.tieba.post.arch.wrapImmutable
+import com.huanchengfly.tieba.post.models.PhotoViewData
+import com.huanchengfly.tieba.post.models.PicItem
 import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
 import com.huanchengfly.tieba.post.ui.common.theme.compose.threadBottomBar
 import com.huanchengfly.tieba.post.ui.common.PicContentRender
@@ -747,6 +749,30 @@ private fun SubPostItem(
     val agreeNum = remember(subPost) {
         subPost.get { agree?.diffAgreeNum ?: 0L }
     }
+    // 楼中楼图片：内容里的 render 不带 photoViewData 时，手动构造一份，
+    // 否则缩略图没有点击目标，点击会冒泡到「回复」上
+    val subPostPics = remember(contentRenders) {
+        contentRenders.filterIsInstance<PicContentRender>()
+    }
+    val subPostPhotoViewData = remember(subPostPics, subPost) {
+        val postId = subPost.get { id }
+        PhotoViewData(
+            picItems = subPostPics.mapIndexed { index, pic ->
+                PicItem(
+                    picId = pic.picId,
+                    picIndex = index,
+                    url = pic.picUrl,
+                    originUrl = pic.originUrl,
+                    showOriginBtn = pic.showOriginBtn,
+                    originSize = pic.originSize,
+                    postId = postId,
+                    width = pic.width,
+                    height = pic.height,
+                )
+            },
+            index = 0
+        )
+    }
     val menuState = rememberMenuState()
     Box(
         modifier = Modifier
@@ -878,7 +904,11 @@ private fun SubPostItem(
                                     .height(120.dp)
                                     .width(thumbWidth.dp)
                                     .clip(RoundedCornerShape(6.dp)),
-                                photoViewData = render.photoViewData,
+                                photoViewData = render.photoViewData
+                                    ?: subPostPhotoViewData.copy(
+                                        index = subPostPics.indexOfFirst { it === render }
+                                            .coerceAtLeast(0)
+                                    ),
                                 contentScale = ContentScale.Crop
                             )
                         } else {

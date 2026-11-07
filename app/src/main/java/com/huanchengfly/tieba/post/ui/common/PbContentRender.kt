@@ -71,10 +71,12 @@ interface PbContentRender {
 @Stable
 data class TextContentRender(
     val text: AnnotatedString,
-    // 排版参数默认值即 1.2.0-mod21 的样子；主楼可以在外层覆盖行距/字间距
+    // 排版参数默认值即 1.2.0-mod21 的样子；主楼可以在外层覆盖行高/行距/字间距/颜色
     val fontSize: TextUnit = 15.sp,
     val lineSpacing: TextUnit = 0.8.sp,
     val letterSpacing: TextUnit = TextUnit.Unspecified,
+    val lineHeight: TextUnit = TextUnit.Unspecified,
+    val color: Color = Color.Unspecified,
 ) : PbContentRender {
     constructor(text: String) : this(AnnotatedString(text))
 
@@ -87,7 +89,9 @@ data class TextContentRender(
         PbContentText(
             text = text,
             fontSize = fontSize,
+            color = color,
             style = MaterialTheme.typography.body1,
+            lineHeight = lineHeight,
             lineSpacing = lineSpacing,
             letterSpacing = letterSpacing
         )

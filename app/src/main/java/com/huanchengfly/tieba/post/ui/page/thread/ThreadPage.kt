@@ -106,8 +106,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import com.airbnb.lottie.compose.LottieAnimation
@@ -135,6 +137,8 @@ import com.huanchengfly.tieba.post.arch.onEvent
 import com.huanchengfly.tieba.post.arch.onGlobalEvent
 import com.huanchengfly.tieba.post.arch.pageViewModel
 import com.huanchengfly.tieba.post.arch.wrapImmutable
+import com.huanchengfly.tieba.post.models.PhotoViewData
+import com.huanchengfly.tieba.post.models.PicItem
 import com.huanchengfly.tieba.post.models.ThreadHistoryInfoBean
 import com.huanchengfly.tieba.post.models.database.History
 import com.huanchengfly.tieba.post.toJson
@@ -2538,30 +2542,56 @@ fun PostCard(
                     }
                 },
                 content = {
-                    // 只有主楼（1 楼）加宽行距/字间距；回复楼层与楼中楼保持原样
-                    val bodyRenders = remember(contentRenders, post.floor) {
+                    // 排版只作用于帖子详情的主楼（floor <= 1），信息流卡片与评论区完全不受影响。
+                    // 正文：16sp / 行高 1.75(28sp) / 字距 0.02em(0.32sp) / 深灰；并按 \n 拆成真正的段落块。
+                    val isLightTheme = MaterialTheme.colors.isLight
+                    val bodyColor = if (isLightTheme) Color(0xFF262626) else Color(0xFFE6E6E6)
+                    val titleColor = if (isLightTheme) Color(0xFF111111) else Color(0xFFF5F5F5)
+                    // 标题以全角左括号/引号开头时做悬挂标点：标点向左探出半字，
+                    // 让第一个汉字与下方正文严格左对齐
+                    val titleIndent = remember(post.title) {
+                        if (post.title.firstOrNull()?.let { it in HangingPunctuation } == true) {
+                            TextIndent(firstLine = (-0.5).em)
+                        } else {
+                            TextIndent.None
+                        }
+                    }
+                    val bodyRenders = remember(contentRenders, post.floor, bodyColor) {
                         if (post.floor <= 1) {
-                            contentRenders.map { render ->
+                            contentRenders.flatMap { render ->
                                 if (render is TextContentRender) {
-                                    render.copy(
-                                        lineSpacing = 4.sp,
-                                        letterSpacing = 0.3.sp
-                                    )
-                                } else render
+                                    render.text.splitIntoParagraphs().map { paragraph ->
+                                        render.copy(
+                                            text = paragraph,
+                                            fontSize = 16.sp,
+                                            lineHeight = 28.sp,
+                                            lineSpacing = 0.sp,
+                                            letterSpacing = 0.32.sp,
+                                            color = bodyColor
+                                        )
+                                    }
+                                } else listOf(render)
                             }
                         } else contentRenders
                     }
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        // 段间距 14dp：每段是独立块，不是用 \n 硬换行
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = paddingModifier
                             .fillMaxWidth()
                     ) {
                         if (showTitle) {
                             Text(
                                 text = post.title,
-                                style = MaterialTheme.typography.subtitle1,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
+                                style = MaterialTheme.typography.subtitle1.copy(
+                                    textIndent = titleIndent
+                                ),
+                                fontSize = 20.sp,
+                                lineHeight = 28.sp,          // 20sp × 1.4
+                                fontWeight = FontWeight.SemiBold,
+                                color = titleColor,
+                                // 与下方正文的间距补到 16dp（Column 已给 14dp）
+                                modifier = Modifier.padding(bottom = 2.dp)
                             )
                         }
 
@@ -2738,15 +2768,37 @@ private fun SubPostItem(
                 val picRenders = remember(subPostList) {
                     subPostList.get { content.renders }.filterIsInstance<PicContentRender>()
                 }
+                // 楼中楼图片此前只是缩略图，点上去会落到整行的「展开楼中楼」；
+                // 这里补一份 PhotoViewData，让缩略图自己消费点击、打开大图查看器
+                val subPostPhotoViewData = remember(picRenders, subPostList) {
+                    val postId = subPostList.get { id }
+                    PhotoViewData(
+                        picItems = picRenders.mapIndexed { index, pic ->
+                            PicItem(
+                                picId = pic.picId,
+                                picIndex = index,
+                                url = pic.picUrl,
+                                originUrl = pic.originUrl,
+                                showOriginBtn = pic.showOriginBtn,
+                                originSize = pic.originSize,
+                                postId = postId,
+                                width = pic.width,
+                                height = pic.height,
+                            )
+                        },
+                        index = 0
+                    )
+                }
                 if (picRenders.isNotEmpty()) {
                     Row(
                         modifier = Modifier.padding(start = 12.dp, top = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        picRenders.take(3).forEach { pic ->
+                        picRenders.take(3).forEachIndexed { index, pic ->
                             NetworkImage(
                                 imageUri = pic.picUrl,
                                 contentDescription = stringResource(id = R.string.desc_image),
+                                photoViewData = subPostPhotoViewData.copy(index = index),
                                 modifier = Modifier
                                     .size(52.dp)
                                     .clip(RoundedCornerShape(4.dp)),
@@ -3053,4 +3105,31 @@ private fun ThreadPrivacyDialog(
         }
     )
 }
+
+/**
+ * 按换行符把正文拆成独立段落。
+ * 逐字符扫描并用 subSequence 切分，保留 AnnotatedString 上的链接/颜色等区间样式。
+ */
+private fun AnnotatedString.splitIntoParagraphs(): List<AnnotatedString> {
+    if (isEmpty()) return emptyList()
+    val result = mutableListOf<AnnotatedString>()
+    var start = 0
+    for (i in indices) {
+        if (this[i] == '\n') {
+            val segment = subSequence(start, i)
+            if (segment.text.isNotBlank()) result.add(segment)
+            start = i + 1
+        }
+    }
+    if (start < length) {
+        val segment = subSequence(start, length)
+        if (segment.text.isNotBlank()) result.add(segment)
+    }
+    return result
+}
+
+/** 需要悬挂处理的全角左括号 / 引号（CJK 与常见西文括号） */
+private val HangingPunctuation = setOf(
+    '『', '「', '【', '（', '《', '〈', '〔', '［', '“', '‘', '{', '['
+)
 
