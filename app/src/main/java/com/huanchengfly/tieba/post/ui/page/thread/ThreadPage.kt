@@ -2543,9 +2543,9 @@ fun PostCard(
                 },
                 content = {
                     // 排版只作用于帖子详情的主楼（floor <= 1），信息流卡片与评论区完全不受影响。
-                    // 正文：16sp / 行高 1.75(28sp) / 字距 0.02em(0.32sp) / 深灰；并按 \n 拆成真正的段落块。
+                    // 正文：14.5sp / 行高 1.7(24.65sp) / 字距 0 / #3C3C3C；并按 \n 拆成真正的段落块。
                     val isLightTheme = MaterialTheme.colors.isLight
-                    val bodyColor = if (isLightTheme) Color(0xFF262626) else Color(0xFFE6E6E6)
+                    val bodyColor = if (isLightTheme) Color(0xFF3C3C3C) else Color(0xFFE6E6E6)
                     val titleColor = if (isLightTheme) Color(0xFF111111) else Color(0xFFF5F5F5)
                     // 标题以全角左括号/引号开头时做悬挂标点：标点向左探出半字，
                     // 让第一个汉字与下方正文严格左对齐
@@ -2563,11 +2563,12 @@ fun PostCard(
                                     render.text.splitIntoParagraphs().map { paragraph ->
                                         render.copy(
                                             text = paragraph,
-                                            fontSize = 16.sp,
-                                            lineHeight = 28.sp,
+                                            fontSize = 14.5.sp,
+                                            lineHeight = 24.65.sp,   // 14.5sp × 1.7
                                             lineSpacing = 0.sp,
-                                            letterSpacing = 0.32.sp,
-                                            color = bodyColor
+                                            letterSpacing = 0.sp,
+                                            color = bodyColor,
+                                            fontWeight = FontWeight.Normal
                                         )
                                     }
                                 } else listOf(render)
@@ -2575,8 +2576,8 @@ fun PostCard(
                         } else contentRenders
                     }
                     Column(
-                        // 段间距 14dp：每段是独立块，不是用 \n 硬换行
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        // 段间距 12dp：每段是独立块，不是用 \n 硬换行
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = paddingModifier
                             .fillMaxWidth()
                     ) {
@@ -2586,12 +2587,10 @@ fun PostCard(
                                 style = MaterialTheme.typography.subtitle1.copy(
                                     textIndent = titleIndent
                                 ),
-                                fontSize = 20.sp,
-                                lineHeight = 28.sp,          // 20sp × 1.4
+                                fontSize = 18.sp,
+                                lineHeight = 24.3.sp,        // 18sp × 1.35
                                 fontWeight = FontWeight.SemiBold,
-                                color = titleColor,
-                                // 与下方正文的间距补到 16dp（Column 已给 14dp）
-                                modifier = Modifier.padding(bottom = 2.dp)
+                                color = titleColor
                             )
                         }
 

@@ -77,6 +77,7 @@ data class TextContentRender(
     val letterSpacing: TextUnit = TextUnit.Unspecified,
     val lineHeight: TextUnit = TextUnit.Unspecified,
     val color: Color = Color.Unspecified,
+    val fontWeight: FontWeight? = null,
 ) : PbContentRender {
     constructor(text: String) : this(AnnotatedString(text))
 
@@ -90,6 +91,7 @@ data class TextContentRender(
             text = text,
             fontSize = fontSize,
             color = color,
+            fontWeight = fontWeight,
             style = MaterialTheme.typography.body1,
             lineHeight = lineHeight,
             lineSpacing = lineSpacing,
