@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.content.FileProvider
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.toastShort
@@ -213,8 +214,18 @@ class UpdateManager @Inject constructor(
 
     // ── 安装 ──────────────────────────────────────────────
 
-    /** 安装已下载的更新；无「安装未知应用」授权时走两段式引导，拒绝则兜底跳发布页。 */
+    /**
+     * 安装已下载的更新；无「安装未知应用」授权时走两段式引导，拒绝则兜底跳发布页。
+     * 外面再包一层兜底：权限页打不开、FileProvider 失败等任何异常都退回发布页，不再闪退。
+     */
     fun installOrPrompt(activity: Activity) {
+        runCatching { doInstall(activity) }.onFailure {
+            Log.w("UpdateManager", "install failed", it)
+            openReleasesPage()
+        }
+    }
+
+    private fun doInstall(activity: Activity) {
         val downloaded = _state.value as? UpdateUiState.Downloaded
         if (downloaded == null || !downloaded.file.exists()) {
             if (downloaded != null) {
