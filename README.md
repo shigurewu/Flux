@@ -2,6 +2,12 @@
   <img src="docs/images/logo.png" width="112" alt="Flux" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/shigurewu/Flux/releases/latest"><img src="https://img.shields.io/github/v/release/shigurewu/Flux?label=latest&color=3b82f6" alt="latest release" /></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3ddc84" alt="Android 8.0+" />
+  <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0" />
+</p>
+
 # Flux
 
 **个人自用**的贴吧客户端，基于 [FluxTie](https://github.com/makise2060/FluxTie)（上游基于 [TiebaLite](https://github.com/huanchengfly/tieba-post)）做的一点个性化修改。
@@ -28,8 +34,10 @@
 
 - 底栏改为「左：头像 + 评论框；右：点赞 / 评论 / 收藏」，不再有 ⋮（菜单保留在顶栏）
 - 点评论框不跳转，在本页弹出**快捷回复面板**：跟随键盘上移，点外部 / 返回键 / 发送成功都会收起，并防重复提交
-- 主楼标题加粗；字号保持克制，只放开行距与字间距
+- 主楼排版单独调过：标题 18sp / 字重 600 / 行高 1.35，正文 14.5sp / 行高 1.7 / 字距 0，按换行拆成独立段落
+- 标题以全角左括号或引号开头时做**悬挂标点**，让第一个汉字与正文左对齐
 - 楼中楼从外部进入定位到阅读区 30% 位置，并有一次中性灰呼吸高亮
+- **楼中楼图片可点开**：缩略图直接进大图查看器，左右滑动切换同楼层图片
 - 点赞数显示为净分值（`+12 / -3 / 0`）
 - 列表触底显示「已经到底了」，并保留额外拉出间距
 
@@ -47,9 +55,18 @@
 
 ### 其他零碎
 
+- 应用内更新检查指向**本仓库**的 Release，可覆盖安装升级
 - 个人页帖子卡片上的可见性胶囊（公开 / 仅自己可见），长按删除
 - 发主题时可选「仅自己可见」
-- 关闭应用内更新检查、备份排除账号数据、收紧明文流量
+- 备份排除账号数据、收紧明文流量
+
+## 下载
+
+从 [Releases](https://github.com/shigurewu/Flux/releases/latest) 下载最新的 `Flux-vX.Y.Z.apk` 直接安装。
+
+- 应用内也带更新检查（设置 → 关于 → 检查更新），检查的是**本仓库**的 Release
+- 首次应用内安装需要允许「安装未知应用」
+- 如果某次更新装不上，可以先用浏览器下载 APK 手动装一次
 
 ## 构建
 
