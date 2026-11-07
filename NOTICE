@@ -1,0 +1,37 @@
+Flux — 第三方贴吧客户端（FluxTie 的修改版本）
+Copyright (C) 2026 ShigureUi <https://github.com/shigurewu>
+
+本程序是自由软件，按 GNU General Public License v3.0 分发，
+完整条款见同目录下的 LICENSE 文件。本程序不提供任何担保。
+
+────────────────────────────────────────
+
+上游版权声明
+本作品并非原创，而是以下项目的衍生作品：
+
+  FluxTie
+    Copyright (C) makise2060
+    https://github.com/makise2060/FluxTie
+    本仓库的直接上游，基线为 v1.2.0（commit edf61d0）
+
+  TiebaLite
+    Copyright (C) huanchengfly
+    https://github.com/huanchengfly/tieba-post
+    FluxTie 的上游，本项目功能的源头
+
+────────────────────────────────────────
+
+修改声明（GPLv3 §5(a)）
+本仓库在上游基础上进行了修改，修改起始时间为 2026 年 11 月。
+所有修改均为界面与交互层面的局部调整，逐条记录在 CHANGELOG.md 中，
+每个发布版本对应仓库内同名的 Git 标签（如 v1.3.13）。
+
+对应源码获取方式：
+  https://github.com/shigurewu/Flux
+
+────────────────────────────────────────
+
+其他说明
+- 本项目与百度公司、贴吧官方无任何关联，非官方客户端
+- 未使用「贴吧」「百度」等商标作为自身名称或标识
+- 若上游作者认为本仓库的某些改动应当合并回去，欢迎直接取用

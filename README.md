@@ -150,6 +150,9 @@ EOF
 本项目以 **GNU General Public License v3.0** 发布，见 [`LICENSE`](LICENSE)。
 
 上游版权归其作者所有；本仓库的修改同样以 GPL-3.0 授权。
+
+**修改声明**：本仓库是 FluxTie（`v1.2.0`，commit `edf61d0`）的修改版本，修改起始于 2026 年 11 月，逐条记录在 [`CHANGELOG.md`](CHANGELOG.md) 中；每个发布版本对应仓库内同名 Git 标签（如 `v1.3.13`），可据此获取对应源码。完整的版权归属与修改声明见 [`NOTICE`](NOTICE)。
+
 如果你分发本项目的 APK，需要同时提供对应版本的源码。
 
 ## 免责声明
