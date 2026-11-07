@@ -145,6 +145,12 @@ EOF
 
 本仓库与上述项目及作者均无隶属关系；若上游需要，欢迎把这里有用的部分直接拿回去。
 
+## 反馈与联系
+
+- 用着有问题、发现 bug：直接在本仓库开 [Issue](https://github.com/shigurewu/Flux/issues)
+- **上游作者**如果对这里的改动有意见（改名、撤掉某个功能、移除某段代码等），同样欢迎直接开 issue 说明，我会尽快处理
+- 由于本仓库不是 GitHub Fork（历史是独立的），上游不会被自动通知；如有需要，可以直接在本仓库 issue 里 @ 到我
+
 ## 许可
 
 本项目以 **GNU General Public License v3.0** 发布，见 [`LICENSE`](LICENSE)。
