@@ -157,7 +157,6 @@ EOF
 - **上游项目**：FluxTie（上游的上游是 TiebaLite），两者均为 GPL-3.0，作者与链接见上文「致谢」
 - **修改内容**：界面与交互层面的局部调整，逐条记录在 [`CHANGELOG.md`](CHANGELOG.md)，修改起始于 2026 年 11 月
 - **源码对应**：每个发布版本都对应仓库内同名 Git 标签（例如 `v1.3.13`），该标签指向的 commit 即对应源码；也可以在 [Releases](https://github.com/shigurewu/Flux/releases) 页的 tag 直接下载源码压缩包
-- **再分发**：如果你分发本项目的 APK，需要同时提供对应版本的源码
 
 完整的版权归属与修改声明另见 [`NOTICE`](NOTICE)。
 
