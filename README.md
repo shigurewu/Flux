@@ -10,7 +10,7 @@
 
 # Flux
 
-当前版本 **1.3.19**：个人主页、动态刷新、粉丝与回帖入口等一批改进。详见 [更新日志](CHANGELOG.md) 与 [发布页](https://github.com/shigurewu/Flux/releases/latest)。
+最新发布版见 [Releases](https://github.com/shigurewu/Flux/releases/latest)，改动记录见 [更新日志](CHANGELOG.md)。
 
 **个人自用**的贴吧客户端，基于 [FluxTie](https://github.com/makise2060/FluxTie)（上游基于 [TiebaLite](https://github.com/huanchengfly/tieba-post)）做的一点个性化修改。
 
@@ -101,7 +101,6 @@
 
 | 版本 | 主要内容 |
 |---|---|
-| `1.3.19` | 私信相关功能整体停用；我的页粉丝与回帖可点；表情随字号缩放 |
 | `1.3.18` | 个人主页改版（公开范围标签、更多菜单）；动态三个子页统一刷新 |
 | `1.3.13` | 深色模式柔和文字全应用生效；外观设置新增开关，可恢复纯白正文 |
 | `1.3.11` | 主楼正文按容器宽度动态定字号；关字体内边距 + 行高居中裁剪 |
