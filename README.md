@@ -10,7 +10,7 @@
 
 # Flux
 
-当前交付版：**1.3.18 修订版（versionCode 60）**。个人主页常驻显示公开/仅自己可见，并通过完整公开列表核对状态；动态三个子页共用玻璃刷新流程，私信暂时屏蔽。详见 [更新日志](CHANGELOG.md) 与 [构建说明](BUILDING-1.3.18.md)。
+当前版本 **1.3.19**：个人主页、动态刷新、粉丝与回帖入口等一批改进。详见 [更新日志](CHANGELOG.md) 与 [发布页](https://github.com/shigurewu/Flux/releases/latest)。
 
 **个人自用**的贴吧客户端，基于 [FluxTie](https://github.com/makise2060/FluxTie)（上游基于 [TiebaLite](https://github.com/huanchengfly/tieba-post)）做的一点个性化修改。
 
