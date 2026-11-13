@@ -70,7 +70,7 @@
 ./gradlew :app:assembleRelease
 ```
 
-产物在 `app/build/outputs/apk/release/`。详细的构建说明见 [`BUILDING-1.3.19.md`](BUILDING-1.3.19.md)。
+产物在 `app/build/outputs/apk/release/`。更详细的构建说明见 [`BUILDING-1.3.18.md`](BUILDING-1.3.18.md)。
 
 ## 许可
 
