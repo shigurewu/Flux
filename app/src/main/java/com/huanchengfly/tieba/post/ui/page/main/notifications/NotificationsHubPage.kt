@@ -1,5 +1,19 @@
 package com.huanchengfly.tieba.post.ui.page.main.notifications
 
+import android.app.NotificationManager
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import com.huanchengfly.tieba.post.im.ImManager
+import com.huanchengfly.tieba.post.im.ImStatus
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+import com.huanchengfly.tieba.post.services.NotifyJobService
+import com.huanchengfly.tieba.post.ui.page.destinations.ConversationsPageDestination
+import com.huanchengfly.tieba.post.ui.page.destinations.LoginPageDestination
+import com.huanchengfly.tieba.post.ui.page.chat.rememberImSessions
+import com.huanchengfly.tieba.post.ui.page.main.LocalMainBottomInsets
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,6 +59,8 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.api.TiebaApi
 import com.huanchengfly.tieba.post.api.models.MessageListBean
+import com.huanchengfly.tieba.post.dataStore
+import com.huanchengfly.tieba.post.collectPreferenceAsState
 import com.huanchengfly.tieba.post.rememberPreferenceAsState
 import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
 import com.huanchengfly.tieba.post.ui.page.LocalNavigator
@@ -62,7 +78,7 @@ private const val NOTIFY_PREFS = "flux_notify_seen"
 /**
  * 消息中心（贴吧式分类入口）。
  *
- * 结构：三类入口（回复我的 / 提到我的 / 赞我的），每行显示最新一条摘要；
+ * 结构：四类入口（回复我的 / 提到我的 / 赞我的 / 私信），每行显示最新一条摘要；
  * 右侧红点表示该分类有新消息，点进去即视为已读。
  * 「设置 → 使用习惯 → 屏蔽小红点」开启后，红点与底栏角标都不再显示。
  */
@@ -70,92 +86,100 @@ private const val NOTIFY_PREFS = "flux_notify_seen"
 fun NotificationsHubPage() {
     val navigator = LocalNavigator.current
     val context = LocalContext.current
-    val hideDot by rememberPreferenceAsState(
-        key = booleanPreferencesKey("hideNotificationDot"),
-        defaultValue = false
-    )
+    val uid = LocalAccount.current?.uid.orEmpty()
+    val scope = rememberCoroutineScope()
+    val sessions = rememberImSessions()
+    val imStatus by ImManager.imStatus.collectAsState()
+    val hideDot by LocalContext.current.dataStore.collectPreferenceAsState(booleanPreferencesKey("hideNotificationDot"), false)
+    var entries by remember(uid) { mutableStateOf(HubCache.entries[uid] ?: emptyHubEntries()) }
+    var loading by remember(uid) { mutableStateOf(false) }
+    var loadError by remember(uid) { mutableStateOf(false) }
+    var markingRead by remember(uid) { mutableStateOf(false) }
+    var refreshTick by remember(uid) { mutableIntStateOf(0) }
 
-    var entries by remember { mutableStateOf<List<HubEntry>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var refreshTick by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(refreshTick) {
-        // 首次进入才走网络；切回消息 Tab 直接用进程内缓存，避免每次进来都刷一遍
-        val cached = if (refreshTick == 0) HubCache.entries else null
-        if (cached != null) {
-            entries = cached
-            loading = false
-            return@LaunchedEffect
-        }
+    LaunchedEffect(uid, refreshTick) {
+        if (uid.isBlank()) return@LaunchedEffect
+        if (refreshTick == 0 && System.currentTimeMillis() - (HubCache.loadedAt[uid] ?: 0L) < 60_000L) return@LaunchedEffect
         loading = true
-        val loaded = loadHubEntries(context)
-        entries = loaded
-        HubCache.entries = loaded
-        loading = false
+        try {
+            val result = loadHubEntries(context, uid, entries)
+            entries = result.entries
+            loadError = result.failed
+            HubCache.entries[uid] = entries
+            if (!result.failed) HubCache.loadedAt[uid] = System.currentTimeMillis()
+        } finally { loading = false }
     }
-
+    LaunchedEffect(uid) {
+        val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notifications.cancel(NotifyJobService.ID_REPLY)
+        notifications.cancel(NotifyJobService.ID_AT)
+    }
     Scaffold(
         backgroundColor = Color.Transparent,
         topBar = {
             Toolbar(
-                title = stringResource(id = R.string.title_notifications),
+                title = stringResource(R.string.title_notifications),
                 navigationIcon = accountNavIconIfCompact(),
                 actions = {
-                    TextButton(
-                        onClick = {
-                            markAllRead(context, entries)
-                            entries = entries.map { it.copy(hasNew = false) }
-                            HubCache.entries = entries
+                    TextButton(enabled = uid.isNotBlank() && !markingRead, onClick = {
+                        markAllRead(context, uid, entries)
+                        entries = entries.map { it.copy(hasNew = false) }
+                        HubCache.entries[uid] = entries
+                        val unread = sessions.filter { it.unreadCount > 0 }
+                        markingRead = true
+                        scope.launch {
+                            try {
+                                for (session in unread) {
+                                    if (com.huanchengfly.tieba.post.utils.AccountUtil.currentAccount?.uid != uid) break
+                                    ImManager.markRead(session.peerUid, session.lastMsgId, uid)
+                                }
+                            } finally { markingRead = false }
                         }
-                    ) {
-                        Text(
-                            text = stringResource(id = R.string.action_mark_all_read),
-                            color = ExtendedTheme.colors.textSecondary,
-                            style = MaterialTheme.typography.caption
-                        )
+                    }) {
+                        Text(stringResource(R.string.action_mark_all_read), color = ExtendedTheme.colors.textSecondary,
+                            style = MaterialTheme.typography.caption)
                     }
-                    ActionItem(
-                        icon = Icons.Rounded.Refresh,
-                        contentDescription = stringResource(id = R.string.btn_refresh)
-                    ) {
-                        refreshTick++
+                    ActionItem(icon = Icons.Rounded.Refresh, contentDescription = stringResource(R.string.btn_refresh)) {
+                        if (!loading) refreshTick++
                     }
                 }
             )
-        },
-        modifier = Modifier.fillMaxSize(),
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
+        }, modifier = Modifier.fillMaxSize()
+    ) { padding ->
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalMainBottomInsets.current)) {
             items(entries, key = { it.type.name }) { entry ->
-                HubRow(
-                    icon = entry.type.icon(),
-                    title = stringResource(id = entry.type.titleRes()),
-                    subtitle = entry.preview.ifBlank {
-                        stringResource(id = R.string.tip_hub_no_new_message)
-                    },
-                    showDot = entry.hasNew && !hideDot,
-                    onClick = {
-                        context.getSharedPreferences(NOTIFY_PREFS, Context.MODE_PRIVATE)
-                            .edit()
-                            .putString(seenKey(entry.type), entry.key)
-                            .apply()
-                        entries = entries.map {
-                            if (it.type == entry.type) it.copy(hasNew = false) else it
+                HubRow(entry.type.icon(), stringResource(entry.type.titleRes()),
+                    if (uid.isBlank()) "登录后查看消息" else entry.preview.ifBlank { if (loading) "加载中…" else stringResource(R.string.tip_hub_no_new_message) },
+                    entry.hasNew && !hideDot, onClick = {
+                        if (uid.isBlank()) navigator.navigate(LoginPageDestination)
+                        else {
+                            context.getSharedPreferences(NOTIFY_PREFS, Context.MODE_PRIVATE).edit()
+                                .putString(seenKey(uid, entry.type), entry.key).apply()
+                            entries = entries.map { if (it.type == entry.type) it.copy(hasNew = false) else it }
+                            HubCache.entries[uid] = entries
+                            navigator.navigate(NotificationsPageDestination(initialTab = entry.type.ordinal))
                         }
-                        HubCache.entries = entries
-                        navigator.navigate(
-                            NotificationsPageDestination(initialTab = entry.type.ordinal)
-                        )
-                    }
-                )
+                    })
             }
-            if (loading && entries.isEmpty()) {
-                item { HubLoadingRow() }
+            if (com.huanchengfly.tieba.post.im.PrivateMessaging.enabled) item(key = "private_messages") {
+                val latest = sessions.firstOrNull()
+                val preview = when {
+                    uid.isBlank() -> "登录后查看私信"
+                    latest != null -> (latest.peerName.ifBlank { "用户${latest.peerUid}" }) + "：" + latest.lastMsgPreview
+                    imStatus is ImStatus.Error -> "暂未连接，点击查看"
+                    imStatus is ImStatus.Connecting -> "连接中…"
+                    else -> "暂无私信"
+                }
+                HubRow(Icons.AutoMirrored.Rounded.Chat, stringResource(R.string.title_chat), preview,
+                    !hideDot && sessions.any { it.unreadCount > 0 }) {
+                    if (uid.isBlank()) navigator.navigate(LoginPageDestination)
+                    else navigator.navigate(ConversationsPageDestination)
+                }
+            }
+            if (loadError) item {
+                Text("消息更新失败，已保留上次内容；点击右上角重试", color = ExtendedTheme.colors.textSecondary,
+                    style = MaterialTheme.typography.caption, modifier = Modifier.padding(16.dp))
             }
         }
     }
@@ -245,7 +269,8 @@ private data class HubEntry(
 
 /** 进程内缓存：切回消息 Tab 不重复请求，只有点刷新才重新拉取 */
 private object HubCache {
-    var entries: List<HubEntry>? = null
+    val entries = mutableMapOf<String, List<HubEntry>>()
+    val loadedAt = mutableMapOf<String, Long>()
 }
 
 internal fun NotificationsType.titleRes(): Int = when (this) {
@@ -260,7 +285,7 @@ private fun NotificationsType.icon(): ImageVector = when (this) {
     NotificationsType.AgreeMe -> Icons.Rounded.ThumbUp
 }
 
-private fun seenKey(type: NotificationsType) = "seen_${type.name}"
+private fun seenKey(uid: String, type: NotificationsType) = "seen_${uid}_${type.name}"
 
 private fun MessageListBean.MessageInfoBean.previewText(): String {
     val who = replyer?.nameShow?.takeIf { it.isNotBlank() }
@@ -269,20 +294,35 @@ private fun MessageListBean.MessageInfoBean.previewText(): String {
     return listOf(who, body).filter { it.isNotBlank() }.joinToString("：")
 }
 
-private suspend fun loadHubEntries(context: Context): List<HubEntry> = coroutineScope {
+private fun emptyHubEntries() = NotificationsType.values().map { HubEntry(it, "", "", false) }
+private data class HubResult(val entries: List<HubEntry>, val failed: Boolean)
+private suspend fun <T> hubRequest(block: suspend () -> T): Result<T> = try { Result.success(block()) }
+catch (e: CancellationException) { throw e }
+catch (e: Exception) { Result.failure(e) }
+
+private suspend fun loadHubEntries(context: Context, uid: String, previous: List<HubEntry>): HubResult = coroutineScope {
     val prefs = context.getSharedPreferences(NOTIFY_PREFS, Context.MODE_PRIVATE)
     val api = TiebaApi.getInstance()
 
-    val replyDeferred = async { runCatching { api.replyMeFlow().first() }.getOrNull() }
-    val atDeferred = async { runCatching { api.atMeFlow().first() }.getOrNull() }
-    val agreeDeferred = async { runCatching { api.agreeMeFlow(0L, 20).first() }.getOrNull() }
+    val replyDeferred = async { hubRequest { api.replyMeFlow().first() } }
+    val atDeferred = async { hubRequest { api.atMeFlow().first() } }
+    val agreeDeferred = async { hubRequest { api.agreeMeFlow(0L, 20).first() } }
 
-    val replyItem = replyDeferred.await()?.replyList?.firstOrNull()
-    val atItem = atDeferred.await()?.atList?.firstOrNull()
-    val agreeItem = agreeDeferred.await()?.agreeList?.firstOrNull()
+    val replyResult = replyDeferred.await()
+    val replyItem = replyResult.getOrNull()?.replyList?.firstOrNull()
+    val atResult = atDeferred.await()
+    val atItem = atResult.getOrNull()?.atList?.firstOrNull()
+    val agreeResult = agreeDeferred.await()
+    val agreeItem = agreeResult.getOrNull()?.agreeList?.firstOrNull()
 
     fun entry(type: NotificationsType, preview: String, key: String): HubEntry {
-        val seen = prefs.getString(seenKey(type), null).orEmpty()
+        val failed = when (type) {
+            NotificationsType.ReplyMe -> replyResult.isFailure
+            NotificationsType.AtMe -> atResult.isFailure
+            NotificationsType.AgreeMe -> agreeResult.isFailure
+        }
+        if (failed) return previous.firstOrNull { it.type == type } ?: HubEntry(type, "", "", false)
+        val seen = prefs.getString(seenKey(uid, type), null).orEmpty()
         return HubEntry(
             type = type,
             preview = preview,
@@ -291,7 +331,7 @@ private suspend fun loadHubEntries(context: Context): List<HubEntry> = coroutine
         )
     }
 
-    listOf(
+    HubResult(listOf(
         entry(
             type = NotificationsType.ReplyMe,
             preview = replyItem?.previewText().orEmpty(),
@@ -310,11 +350,11 @@ private suspend fun loadHubEntries(context: Context): List<HubEntry> = coroutine
             }.orEmpty(),
             key = agreeItem?.id?.toString().orEmpty()
         ),
-    )
+    ), replyResult.isFailure || atResult.isFailure || agreeResult.isFailure)
 }
 
-private fun markAllRead(context: Context, entries: List<HubEntry>) {
+private fun markAllRead(context: Context, uid: String, entries: List<HubEntry>) {
     val editor = context.getSharedPreferences(NOTIFY_PREFS, Context.MODE_PRIVATE).edit()
-    entries.forEach { editor.putString(seenKey(it.type), it.key) }
+    entries.forEach { editor.putString(seenKey(uid, it.type), it.key) }
     editor.apply()
 }

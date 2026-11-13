@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.utils
 
+import androidx.room.withTransaction
+import com.huanchengfly.tieba.post.im.sessionAfterNewMessage
 import com.huanchengfly.tieba.post.App
 import com.huanchengfly.tieba.post.database.AppDatabase
 import com.huanchengfly.tieba.post.database.AppDatabaseEntryPoint
@@ -7,6 +9,8 @@ import com.huanchengfly.tieba.post.models.database.Account
 import com.huanchengfly.tieba.post.models.database.Block
 import com.huanchengfly.tieba.post.models.database.Draft
 import com.huanchengfly.tieba.post.models.database.History
+import com.huanchengfly.tieba.post.models.database.ImMessage
+import com.huanchengfly.tieba.post.models.database.ImSession
 import com.huanchengfly.tieba.post.models.database.MemeEmoticon
 import com.huanchengfly.tieba.post.models.database.SearchHistory
 import com.huanchengfly.tieba.post.models.database.SearchPostHistory
@@ -124,4 +128,50 @@ object DatabaseUtil {
 
     suspend fun replaceMemeEmoticons(uid: String, items: List<MemeEmoticon>) =
         appDatabase.memeEmoticonDao().replaceAll(uid, items)
+
+    // ── IM 私信 ─────────────────────────────────────────────────
+    fun getImSessionFlow(uid: String): Flow<List<ImSession>> =
+        appDatabase.imSessionDao().getFlowByUid(uid)
+
+    fun getImUnreadCountFlow(uid: String): Flow<Int?> =
+        appDatabase.imSessionDao().getUnreadCountFlow(uid)
+
+    fun getImMessageFlow(uid: String, peerUid: Long): Flow<List<ImMessage>> =
+        appDatabase.imMessageDao().getFlowByPeer(uid, peerUid)
+
+    suspend fun getImSession(uid: String, peerUid: Long): ImSession? =
+        appDatabase.imSessionDao().getByPeerUid(uid, peerUid)
+
+    suspend fun upsertImSession(session: ImSession) =
+        appDatabase.imSessionDao().upsert(session)
+
+    suspend fun clearImUnread(uid: String, peerUid: Long) =
+        appDatabase.imSessionDao().clearUnread(uid, peerUid)
+
+    suspend fun insertImMessages(messages: List<ImMessage>): List<Long> =
+        appDatabase.imMessageDao().insertAll(messages)
+
+    suspend fun getLatestImMessage(uid: String, peerUid: Long): ImMessage? =
+        appDatabase.imMessageDao().getLatestByPeer(uid, peerUid)
+
+    /** Message insertion and unread count are atomic; replayed messages have no effect. */
+    suspend fun storeImMessage(message: ImMessage, peerName: String = "", peerPortrait: String = "") =
+        appDatabase.withTransaction {
+            val inserted = appDatabase.imMessageDao().insertAll(listOf(message)).first() != -1L
+            if (inserted) {
+                val dao = appDatabase.imSessionDao()
+                val old = dao.getByPeerUid(message.uid, message.peerUid)
+                val updated = sessionAfterNewMessage(old, message, peerName, peerPortrait)
+                if (old == null) dao.insert(updated) else dao.update(updated)
+            }
+        }
+
+    suspend fun readImThrough(uid: String, peerUid: Long, msgId: Long) =
+        appDatabase.imSessionDao().clearUnreadThrough(uid, peerUid, msgId)
+
+    suspend fun advanceImPeerRead(uid: String, peerUid: Long, msgId: Long) =
+        appDatabase.imSessionDao().advancePeerRead(uid, peerUid, msgId)
+
+    suspend fun updateImPeer(uid: String, peerUid: Long, name: String, portrait: String) =
+        appDatabase.imSessionDao().updatePeer(uid, peerUid, name, portrait)
 }

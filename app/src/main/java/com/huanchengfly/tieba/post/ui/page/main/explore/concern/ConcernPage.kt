@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import com.huanchengfly.tieba.post.ui.page.main.explore.BindExploreRefresh
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberGlassPullRefreshState
+import com.huanchengfly.tieba.post.ui.widgets.compose.glassPullRefresh
+import com.huanchengfly.tieba.post.ui.widgets.compose.GlassRefreshIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,7 +38,6 @@ import com.huanchengfly.tieba.post.ui.page.destinations.ForumPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.ThreadPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.UserProfilePageDestination
 import com.huanchengfly.tieba.post.ui.widgets.compose.Container
-import com.huanchengfly.tieba.post.ui.widgets.compose.PullRefreshLogoIndicator
 import com.huanchengfly.tieba.post.ui.widgets.compose.FeedCard
 import com.huanchengfly.tieba.post.ui.widgets.compose.feedCardListSpacing
 import com.huanchengfly.tieba.post.ui.widgets.compose.LazyLoad
@@ -70,34 +71,19 @@ fun ConcernPage(
         prop1 = ConcernUiState::data,
         initial = persistentListOf()
     )
-    val pullRefreshState = rememberPullRefreshState(
+    val refreshCompleted by viewModel.uiState.collectPartialAsState(
+        prop1 = ConcernUiState::refreshCompleted, initial = 0L)
+    val pullRefreshState = rememberGlassPullRefreshState(
+        refreshCompleted = refreshCompleted,
         refreshing = isRefreshing,
         onRefresh = { viewModel.send(ConcernUiIntent.Refresh) })
 
-    onGlobalEvent<GlobalEvent.Refresh>(
-        filter = { it.key == "concern" }
-    ) {
-        viewModel.send(ConcernUiIntent.Refresh)
-    }
-
-    // 底栏再次点击「动态」：直接监听 tick 触发刷新，避免事件转发链断掉。
-    // lastHandledReselectTick 从「进入页面时的 tick」起步，带着历史 tick 重新进入不会刷新；
-    // 只有真正在动态页再点一次（tick 递增）才刷新。
-    val tabReselect = LocalTabReselect.current
-    var lastHandledReselectTick by remember { mutableIntStateOf(tabReselect.tick) }
-    LaunchedEffect(tabReselect.tick, tabReselect.tabId) {
-        if (tabReselect.tick == lastHandledReselectTick) return@LaunchedEffect
-        lastHandledReselectTick = tabReselect.tick
-        if (tabReselect.tabId == "explore") {
-            viewModel.send(ConcernUiIntent.Refresh)
-        }
-    }
-
     val lazyListState = rememberLazyListState()
+    BindExploreRefresh("concern", pullRefreshState, lazyListState)
     viewModel.bindScrollToTopEvent(lazyListState = lazyListState)
 
     Box(
-        modifier = Modifier.pullRefresh(pullRefreshState)
+        modifier = Modifier.glassPullRefresh(pullRefreshState)
     ) {
         LoadMoreLayout(
             isLoading = isLoadingMore,
@@ -164,12 +150,6 @@ fun ConcernPage(
             }
         }
 
-        PullRefreshLogoIndicator(
-            refreshing = isRefreshing,
-            state = pullRefreshState,
-            modifier = Modifier.align(Alignment.TopCenter),
-            backgroundColor = ExtendedTheme.colors.pullRefreshIndicator,
-            contentColor = ExtendedTheme.colors.onPrimary,
-        )
+        GlassRefreshIndicator(state = pullRefreshState, modifier = Modifier.align(Alignment.TopCenter))
     }
 }

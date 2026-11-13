@@ -47,6 +47,7 @@
         android:smallScreens="true" />
 
     <queries>
+        <package android:name="com.baidu.tieba" />
         <intent>
             <data
                 android:host="unidispatch"

@@ -238,7 +238,7 @@ fun ExplorePage() {
 
     val loggedIn = remember(account) { account != null }
 
-    val pages = remember {
+    val pages = remember(loggedIn) {
         listOfNotNull(
             if (loggedIn) ExplorePageItem(
                 "concern",
@@ -285,11 +285,19 @@ fun ExplorePage() {
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
+                if (kotlin.math.abs(available.x) > kotlin.math.abs(available.y)) return Offset.Zero
+                // Let the active feed consume reverse drag before the collapsing header or list.
+                if ((com.huanchengfly.tieba.post.ui.page.main.MainTabUiState.exploreRefreshState?.offsetPx ?: 0f) > 0f) return Offset.Zero
+                if (available.y > 0f && heightOffset < 0f) {
+                    val previous = heightOffset
+                    heightOffset = min(heightOffset + available.y, 0f)
+                    return Offset(0f, heightOffset - previous)
+                }
                 if (available.y < 0) {
                     val prevHeightOffset = heightOffset
                     heightOffset = max(heightOffset + available.y, -titleBarHeight)
                     if (prevHeightOffset != heightOffset) {
-                        return available.copy(x = 0f)
+                        return Offset(0f, heightOffset - prevHeightOffset)
                     }
                 }
 
@@ -301,11 +309,12 @@ fun ExplorePage() {
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
+                if (kotlin.math.abs(available.x) > kotlin.math.abs(available.y)) return Offset.Zero
                 if (available.y > 0f) {
                     val prevHeightOffset = heightOffset
                     heightOffset = min(heightOffset + available.y, 0f)
                     if (prevHeightOffset != heightOffset) {
-                        return available.copy(x = 0f)
+                        return Offset(0f, heightOffset - prevHeightOffset)
                     }
                 }
 
@@ -378,7 +387,9 @@ fun ExplorePage() {
             verticalAlignment = Alignment.Top,
             userScrollEnabled = true,
         ) {
-            pages[it].content()
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalExploreFeedActive provides (pagerState.currentPage == it && !pagerState.isScrollInProgress)
+            ) { pages[it].content() }
         }
     }
 }

@@ -57,6 +57,7 @@ import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PhotoSizeSelectActual
 import androidx.compose.material.icons.rounded.SwapCalls
+import com.huanchengfly.tieba.post.repository.rememberForumAvatar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -263,9 +264,10 @@ private fun ForumHeader(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit = {},
 ) {
+    val resolvedAvatar = rememberForumAvatar(forumName, forumAvatar)
     UserHeader(
         avatar = {
-            if (forumAvatar.isNullOrBlank()) {
+            if (resolvedAvatar.isNullOrBlank()) {
                 Box(
                     modifier = Modifier
                         .size(Sizes.Small)
@@ -282,7 +284,7 @@ private fun ForumHeader(
                 }
             } else {
                 Avatar(
-                    data = forumAvatar,
+                    data = resolvedAvatar,
                     size = Sizes.Small,
                     contentDescription = stringResource(id = R.string.forum_portrait)
                 )
@@ -854,10 +856,11 @@ private fun ThreadForumInfo(
     forumAvatar: String?,
     onClick: () -> Unit,
 ) {
+    val resolvedAvatar = rememberForumAvatar(forumName, forumAvatar)
     val hasForum = remember(forumName) { forumName.isNotBlank() }
     if (hasForum) {
         ForumInfoChip(
-            imageUriProvider = { forumAvatar },
+            imageUriProvider = { resolvedAvatar },
             nameProvider = { forumName },
             onClick = onClick
         )
@@ -1363,13 +1366,16 @@ fun FeedCard(
     onClickUser: (id: Long) -> Unit = {},
     onClickForum: (name: String) -> Unit = {},
     onClickOriginThread: (OriginThreadInfo) -> Unit = {},
+    profileCard: Boolean = false,
+    profileAuthorName: String = "",
+    profileAuthorPortrait: String = "",
     headerAction: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     Card(
         header = {
             // 吧名模式：头部显示所在吧而非作者（issue #13）
-            if (LocalContext.current.appPreferences.feedCardShowForumName) {
+            if (!profileCard && LocalContext.current.appPreferences.feedCardShowForumName) {
                 ForumHeader(
                     forumName = item.get { forum_name },
                     forumAvatar = null,
@@ -1377,9 +1383,9 @@ fun FeedCard(
                 ) { headerAction() }
             } else {
                 UserHeader(
-                    nameProvider = { item.get { user_name } },
-                    nameShowProvider = { item.get { name_show } },
-                    portraitProvider = { item.get { user_portrait } },
+                    nameProvider = { item.get { user_name }.ifBlank { profileAuthorName } },
+                    nameShowProvider = { item.get { name_show }.ifBlank { profileAuthorName } },
+                    portraitProvider = { item.get { user_portrait }.ifBlank { profileAuthorPortrait } },
                     timeProvider = { item.get { create_time } },
                     onClick = {
                         onClickUser(item.get { user_id })
@@ -1418,7 +1424,7 @@ fun FeedCard(
                 }
 
             // 吧名模式下头部已展示所在吧，底部吧信息条隐藏
-            if (!LocalContext.current.appPreferences.feedCardShowForumName) {
+            if (profileCard || !LocalContext.current.appPreferences.feedCardShowForumName) {
                 ThreadForumInfo(
                     forumName = item.get { forum_name },
                     forumAvatar = null,

@@ -1,4 +1,17 @@
 package com.huanchengfly.tieba.post.ui.page.main.notifications.list
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+import com.huanchengfly.tieba.post.ui.widgets.compose.EmptyState
+import com.huanchengfly.tieba.post.ui.widgets.compose.EmptyIllustration
+import com.huanchengfly.tieba.post.ui.widgets.compose.Button
+import com.huanchengfly.tieba.post.ui.page.destinations.LoginPageDestination
+import com.huanchengfly.tieba.post.services.NotifyJobService
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import android.content.Context
+import android.app.NotificationManager
+import androidx.compose.foundation.layout.fillMaxSize
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,8 +80,21 @@ fun NotificationsListPage(
         NotificationsType.AgreeMe -> pageViewModel<NotificationsListUiIntent, AgreeMeListViewModel>()
     }
 ) {
+    val account = LocalAccount.current
+    val loggedIn = account != null
+    var wasLoggedIn by remember { mutableStateOf(loggedIn) }
+    LaunchedEffect(account?.uid) {
+        if (loggedIn && !wasLoggedIn) viewModel.send(NotificationsListUiIntent.Refresh)
+        wasLoggedIn = loggedIn
+    }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notifications.cancel(NotifyJobService.ID_REPLY)
+        notifications.cancel(NotifyJobService.ID_AT)
+    }
     LazyLoad(loaded = viewModel.initialized) {
-        viewModel.send(NotificationsListUiIntent.Refresh)
+        if (loggedIn) viewModel.send(NotificationsListUiIntent.Refresh)
         viewModel.initialized = true
     }
     val navigator = LocalNavigator.current
@@ -100,7 +126,45 @@ fun NotificationsListPage(
     Box(
         modifier = Modifier.pullRefresh(pullRefreshState)
     ) {
-        LoadMoreLayout(
+        when {
+            // 空态统一用外层 Box 居中：EmptyState 内容块宽 0.9 屏宽，直接放会贴左
+            !loggedIn -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 160.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                EmptyState(
+                    title = stringResource(id = R.string.title_empty_login),
+                    subtitle = stringResource(id = R.string.notifications_empty_login_subtitle),
+                    illustration = EmptyIllustration.Hide,
+                    modifier = Modifier.fillMaxWidth(),
+                    actions = {
+                        Button(
+                            onClick = { navigator.navigate(LoginPageDestination) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(text = stringResource(id = R.string.button_login))
+                        }
+                    },
+                )
+            }
+
+            data.isEmpty() && !isRefreshing -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 160.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                EmptyState(
+                    title = stringResource(id = R.string.notifications_empty_title),
+                    subtitle = stringResource(id = R.string.notifications_empty_subtitle),
+                    illustration = EmptyIllustration.Hide,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            else -> LoadMoreLayout(
             isLoading = isLoadingMore,
             onLoadMore = { viewModel.send(NotificationsListUiIntent.LoadMore(currentPage + 1)) },
             loadEnd = !hasMore,
@@ -172,17 +236,19 @@ fun NotificationsListPage(
                 }
             }
         }
+        }
 
-        PullRefreshLogoIndicator(
-            refreshing = isRefreshing,
-            state = pullRefreshState,
-            modifier = Modifier.align(Alignment.TopCenter),
-            backgroundColor = ExtendedTheme.colors.pullRefreshIndicator,
-            contentColor = ExtendedTheme.colors.onPrimary,
-        )
+        if (loggedIn && data.isNotEmpty()) {
+            PullRefreshLogoIndicator(
+                refreshing = isRefreshing,
+                state = pullRefreshState,
+                modifier = Modifier.align(Alignment.TopCenter),
+                backgroundColor = ExtendedTheme.colors.pullRefreshIndicator,
+                contentColor = ExtendedTheme.colors.onPrimary,
+            )
+        }
     }
 }
-
 /**
  * 贴吧式消息行：头像 + 昵称/时间 → 动作文案 → 内容块 → 吧名。
  * 「赞我的」内容块展示被赞的原回复；「回复我/@我」正文直接展示，引用块单独显示。

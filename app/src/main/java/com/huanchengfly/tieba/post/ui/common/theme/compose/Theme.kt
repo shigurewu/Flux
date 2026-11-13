@@ -2,6 +2,7 @@ package com.huanchengfly.tieba.post.ui.common.theme.compose
 
 import android.annotation.SuppressLint
 import android.os.Build
+import androidx.compose.material.LocalContentColor
 import androidx.compose.material.Colors
 import androidx.compose.material.ContentAlpha
 import androidx.compose.material.MaterialTheme
@@ -39,6 +40,10 @@ data class ExtendedColors(
     val onPrimary: Color = Color.Unspecified,
     val accent: Color = Color.Unspecified,
     val onAccent: Color = Color.Unspecified,
+    val primaryContainer: Color = Color.Unspecified,
+    val onPrimaryContainer: Color = Color.Unspecified,
+    val secondaryContainer: Color = Color.Unspecified,
+    val onSecondaryContainer: Color = Color.Unspecified,
     val topBar: Color = Color.Unspecified,
     val onTopBar: Color = Color.Unspecified,
     val onTopBarSecondary: Color = Color.Unspecified,
@@ -70,13 +75,6 @@ val LocalExtendedColors = staticCompositionLocalOf {
         false,
     )
 }
-
-/** 深色模式统一正文色（降低纯白刺眼感） */
-private val DarkModeTextColor = Color(0xFFA8A8A8)
-
-/** 深色模式次级文字，比正文再暗一档以保留层级 */
-private val DarkModeTextSecondaryColor = Color(0xFF8A8A8A)
-
 
 @SuppressLint("ConflictingOnColor")
 fun getColorPalette(
@@ -490,6 +488,10 @@ private fun getSeedColor(
         onPrimary = scheme.onPrimary,
         accent = scheme.tertiary,
         onAccent = scheme.onTertiary,
+        primaryContainer = scheme.primaryContainer,
+        onPrimaryContainer = scheme.onPrimaryContainer,
+        secondaryContainer = scheme.secondaryContainer,
+        onSecondaryContainer = scheme.onSecondaryContainer,
         topBar = if (toolbarPrimaryColor) scheme.primary else scheme.background,
         onTopBar = if (toolbarPrimaryColor) scheme.onPrimary else scheme.onBackground,
         onTopBarSecondary = if (toolbarPrimaryColor) {
@@ -569,22 +571,14 @@ fun TiebaLiteTheme(
         )
         useDynamicTheme -> getDynamicColor(theme, dynamicTonalPalette(context))
         else -> getThemeColorForTheme(theme)
-    }.let { base ->
-        // 深色模式下统一正文色：与帖子详情主楼保持一致，
-        // 避免大面积纯白在暗色背景上过于刺眼；次级文字同步降一档保持层级
-        if (isDarkColorPalette && softDarkText) {
-            base.copy(
-                text = DarkModeTextColor,
-                textSecondary = DarkModeTextSecondaryColor,
-            )
-        } else {
-            base
-        }
-    }
+    }.withSoftDarkText(softDarkText, isDarkColorPalette)
 
     val colors = getColorPalette(isDarkColorPalette, extendedColors)
 
-    CompositionLocalProvider(LocalExtendedColors provides extendedColors) {
+    CompositionLocalProvider(
+        LocalExtendedColors provides extendedColors,
+        LocalContentColor provides extendedColors.text
+    ) {
         MaterialTheme(
             colors = colors,
             typography = Typography,

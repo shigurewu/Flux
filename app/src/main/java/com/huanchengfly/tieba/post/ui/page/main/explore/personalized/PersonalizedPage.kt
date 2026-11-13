@@ -34,8 +34,10 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import com.huanchengfly.tieba.post.ui.page.main.explore.BindExploreRefresh
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberGlassPullRefreshState
+import com.huanchengfly.tieba.post.ui.widgets.compose.glassPullRefresh
+import com.huanchengfly.tieba.post.ui.widgets.compose.GlassRefreshIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
@@ -74,9 +76,6 @@ import com.huanchengfly.tieba.post.ui.page.destinations.ForumPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.ThreadPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.UserProfilePageDestination
 import com.huanchengfly.tieba.post.ui.widgets.compose.BlockTip
-import com.huanchengfly.tieba.post.ui.widgets.compose.GlassRefreshIndicator
-import com.huanchengfly.tieba.post.ui.widgets.compose.glassPullRefresh
-import com.huanchengfly.tieba.post.ui.widgets.compose.rememberGlassPullRefreshState
 import com.huanchengfly.tieba.post.ui.widgets.compose.BlockableContent
 import com.huanchengfly.tieba.post.ui.widgets.compose.Container
 import com.huanchengfly.tieba.post.ui.widgets.compose.ErrorScreen
@@ -131,7 +130,10 @@ fun PersonalizedPage(
         initial = persistentListOf()
     )
     val refreshScope = rememberCoroutineScope()
+    val refreshCompleted by viewModel.uiState.collectPartialAsState(
+        prop1 = PersonalizedUiState::refreshCompleted, initial = 0L)
     val pullRefreshState = rememberGlassPullRefreshState(
+        refreshCompleted = refreshCompleted,
         refreshing = isRefreshing,
         onRefresh = { viewModel.send(PersonalizedUiIntent.Refresh) }
     )
@@ -154,43 +156,7 @@ fun PersonalizedPage(
         mutableStateOf(false)
     }
 
-    onGlobalEvent<GlobalEvent.Refresh>(
-        filter = { it.key == "personalized" }
-    ) {
-        if(!isRefreshing) viewModel.send(PersonalizedUiIntent.Refresh)
-    }
-
-    // 点击底栏「动态」：回顶 → 圆圈拉下来 → 旋转并刷新 → 提示 → 收回
-    // 与手动下拉复用同一个 GlassPullRefreshState，所以同一时刻只有一套动画在动。
-    // lastHandledReselectTick 从进入页面时的值起步：从别的 Tab 切回来不会因历史 tick 触发刷新，
-    // 只有人真的在动态页再点一次「动态」才刷新。
-    val tabReselect = LocalTabReselect.current
-    var lastHandledReselectTick by remember { mutableIntStateOf(tabReselect.tick) }
-    LaunchedEffect(tabReselect.tick, tabReselect.tabId) {
-        if (tabReselect.tick == lastHandledReselectTick) return@LaunchedEffect
-        lastHandledReselectTick = tabReselect.tick
-        if (tabReselect.tabId == "explore") {
-            if (isRefreshing) return@LaunchedEffect
-            val notAtTop = lazyListState.firstVisibleItemIndex > 0 ||
-                    lazyListState.firstVisibleItemScrollOffset > 0
-            if (notAtTop) {
-                // 等滚动结束再开始动画，避免「滚到一半圆圈就下来」
-                lazyListState.animateScrollToItem(0)
-            }
-            pullRefreshState.animateRefresh()
-        }
-    }
-
-    // 把「是否在顶部」同步给底栏，决定显示普通图标还是圆圈刷新图标
-    LaunchedEffect(lazyListState) {
-        snapshotFlow {
-            lazyListState.firstVisibleItemIndex == 0 &&
-                    lazyListState.firstVisibleItemScrollOffset == 0
-        }.collect { MainTabUiState.exploreAtTop = it }
-    }
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        onDispose { MainTabUiState.exploreAtTop = true }
-    }
+    BindExploreRefresh("personalized", pullRefreshState, lazyListState)
     viewModel.onEvent<PersonalizedUiEvent.RefreshSuccess> {
         refreshCount = it.count
         showRefreshTip = true
@@ -205,7 +171,9 @@ fun PersonalizedPage(
     }
 
     if (showRefreshTip) {
-        LaunchedEffect(data) {
+        // 以 refreshCount 为 key：仅在每次刷新成功时回顶一次。
+        // 若以 data 为 key，提示窗内「加载更多」也会重启本 Effect，把浏览到半途的用户拽回顶部。
+        LaunchedEffect(refreshCount) {
             launch {
                 delay(20)
                 lazyListState.scrollToItem(0, 0)
@@ -290,11 +258,8 @@ fun PersonalizedPage(
                     },
                     // 「上次阅读到此处」的刷新入口：与底栏按钮、手动下拉共用同一套圆圈动画
                     onRefresh = {
-                        refreshScope.launch {
-                            // 回顶与刷新并行：列表立刻开始上滑，刷新同时进行，
-                            // 避免「先干等刷新结束、再突然位移」那种不跟手的感觉
-                            launch { lazyListState.animateScrollToItem(0) }
-                            pullRefreshState.animateRefresh()
+                        pullRefreshState.requestRefresh {
+                            refreshScope.launch { lazyListState.animateScrollToItem(0) }
                         }
                     },
                     onOpenForum = { navigator.navigate(ForumPageDestination(it)) },

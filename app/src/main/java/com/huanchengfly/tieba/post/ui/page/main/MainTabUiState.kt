@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
  * 点击后回到顶部并刷新；离开动态页或回到顶部后恢复普通图标。
  */
 object MainTabUiState {
+    var exploreRefreshState by mutableStateOf<com.huanchengfly.tieba.post.ui.widgets.compose.GlassPullRefreshState?>(null)
     var exploreAtTop by mutableStateOf(true)
 
     /** 当前选中的底栏标签 id，避免在别的页面也显示刷新/回顶图标 */

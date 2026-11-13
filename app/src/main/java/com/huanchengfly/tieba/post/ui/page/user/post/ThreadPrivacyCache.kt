@@ -14,6 +14,11 @@ object ThreadPrivacyCache {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
+    fun getHidden(context: Context, threadId: Long): Boolean? {
+        val values = prefs(context)
+        return if (values.contains(threadId.toString())) values.getBoolean(threadId.toString(), false) else null
+    }
+
     fun isHidden(context: Context, threadId: Long): Boolean =
         prefs(context).getBoolean(threadId.toString(), false)
 

@@ -94,7 +94,6 @@ object EmoticonManager {
         "乖" to "image_emoticon28",
         "睡觉" to "image_emoticon29",
         "惊哭" to "image_emoticon30",
-        "生气" to "image_emoticon31",
         "惊讶" to "image_emoticon32",
         "喷" to "image_emoticon33",
         "爱心" to "image_emoticon34",
@@ -114,6 +113,8 @@ object EmoticonManager {
         "大拇指" to "image_emoticon48",
         "弱" to "image_emoticon49",
         "OK" to "image_emoticon50",
+        // 「生气」有两代资源：31 是旧版（WEB 映射表同款），61 是新版（客户端面板实际下发）。
+        // 旧版本 mapOf 重复 key 静默保留 61，新版面板/服务端均按 61 出图，以 61 为权威。
         "生气" to "image_emoticon61",
         "沙发" to "image_emoticon77",
         "手纸" to "image_emoticon78",
@@ -123,13 +124,49 @@ object EmoticonManager {
         "红领巾" to "image_emoticon82",
         "蜡烛" to "image_emoticon83",
         "三道杠" to "image_emoticon84",
+        // 61 之后的新一批表情：名字来自服务端 rich_abstract 的 name/id 对照，早期只存在缓存里，
+        // 这里固化为默认表，缓存作废后也不会从面板消失
+        "小乖" to "image_emoticon66",
+        "捂嘴笑" to "image_emoticon67",
+        "你懂的" to "image_emoticon68",
+        "what" to "image_emoticon69",
+        "笑尿" to "image_emoticon72",
+        "挖鼻" to "image_emoticon73",
+        "吃瓜" to "image_emoticon86",
+        "喝酒" to "image_emoticon87",
+        "欢呼" to "image_emoticon95",
+        "奥特曼" to "image_emoticon125",
+        "不听" to "image_emoticon126",
+        "望远镜" to "image_emoticon128",
+        "鼠2" to "image_emoticon137",
     )
+
+    /**
+     * 表情映射表版本。
+     *
+     * 旧版本的缓存把「首次见到的 name/id」写死并永久覆盖默认表，一旦某次登记错了
+     * （例如把 `呵呵` 记成 `image_emoticon11`），后续所有帖子都会按错误 id 渲染，
+     * 且没有任何自愈路径。版本号递增后，旧缓存的 mapping 不再被信任，只保留 ids，
+     * 默认表重建后再接受运行时观察到的对照。
+     *
+     * v1：初始版本；v2：修复缓存污染（issue #33）；v3：裁决「生气」重复 key（默认表
+     * 实际生效 61 而非旧 WEB 映射的 31），使旧缓存中固化的 31 → 61 错误映射失效。
+     */
+    private const val MAPPING_VERSION = 3
 
     private lateinit var contextRef: WeakReference<Context>
     private val emoticonIds: MutableList<String> = mutableListOf()
     private val emoticonMapping: MutableMap<String, String> = mutableMapOf()
     private val drawableCache: MutableMap<String, Drawable> = mutableMapOf()
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+
+    /**
+     * Compose 可观察的 mapping 变更计数器：registerEmoticon 每次实际改动映射时 +1，
+     * 让表情面板等 Composable 以它为 remember key，服务端覆盖后立即重组格子，
+     * 避免「面板图按旧 id、点击解析按新 id」的同会话抖动（issue #36）。
+     */
+    var mappingRevision by mutableStateOf(0)
+        private set
 
     /** 个人表情包内存映射：sharpKey（collect_xxx / diy_xxx）→ 图片 URL */
     private val memeEmoticonMap: MutableMap<String, String> = mutableMapOf()
@@ -168,39 +205,68 @@ object EmoticonManager {
     }
 
     /**
-     * 为文本中出现的个人表情（`MemeEmoticon#key` 注解）构建 InlineContent。
+     * 为文本中出现的个人表情（`MemeEmoticon#{key}|{w}|{h}` 注解）构建 InlineContent。
      * 仅构建文本中实际出现且本地有 URL 的表情，避免全量构建。
+     *
+     * @param stickerSize true 时按贴纸口径展示：按 sharpText 携带的原始宽高比适配进
+     * [EmoticonUtil.MEME_STICKER_SIZE_DP] 方框（宽高缺失按 1:1）；false 时退回单行行高（信息流摘要等紧凑场景）
      */
     fun buildMemeInlineContent(
         text: AnnotatedString,
-        sizePx: Float
+        sizePx: Float,
+        stickerSize: Boolean = true,
     ): Map<String, InlineTextContent> {
-        val keys = text.getStringAnnotations(EmoticonUtil.INLINE_CONTENT_TAG, 0, text.length)
+        val entries = text.getStringAnnotations(EmoticonUtil.INLINE_CONTENT_TAG, 0, text.length)
             .mapNotNull { annotation ->
                 annotation.item
                     .takeIf { it.startsWith(EmoticonUtil.MEME_INLINE_PREFIX) }
                     ?.removePrefix(EmoticonUtil.MEME_INLINE_PREFIX)
+                    ?.split('|')
+                    ?.takeIf { it.size == 3 }
+                    ?.let { (key, w, h) ->
+                        Triple(key, w.toIntOrNull() ?: 0, h.toIntOrNull() ?: 0)
+                    }
             }
-            .distinct()
-            .filter { memeEmoticonMap.containsKey(it) }
-        if (keys.isEmpty()) return emptyMap()
-        return keys.associate { key ->
-            "${EmoticonUtil.MEME_INLINE_PREFIX}$key" to InlineTextContent(
+            .distinctBy { it.first }
+            .filter { (key, _, _) -> memeEmoticonMap.containsKey(key) }
+        if (entries.isEmpty()) return emptyMap()
+        val stickerMaxPx = EmoticonUtil.MEME_STICKER_SIZE_DP *
+            App.INSTANCE.resources.displayMetrics.density
+        return entries.associate { (key, width, height) ->
+            val (drawWidth, drawHeight) = if (stickerSize) {
+                fitMemeBox(width, height, stickerMaxPx)
+            } else {
+                sizePx to sizePx
+            }
+            "${EmoticonUtil.MEME_INLINE_PREFIX}$key|$width|$height" to InlineTextContent(
                 placeholder = Placeholder(
-                    sizePx.pxToSp().sp,
-                    sizePx.pxToSp().sp,
+                    drawWidth.pxToSp().sp,
+                    drawHeight.pxToSp().sp,
                     PlaceholderVerticalAlign.TextCenter
                 ),
                 children = {
                     AsyncImage(
                         imageUri = memeEmoticonMap[key].orEmpty(),
                         contentDescription = stringResource(id = R.string.emoticon, key),
-                        modifier = Modifier.size(sizePx.pxToDp().dp)
+                        modifier = Modifier.size(
+                            drawWidth.pxToDp().dp,
+                            drawHeight.pxToDp().dp
+                        )
                     )
                 }
             )
         }
     }
+
+    /** 原始宽高比适配进 maxSide 正方形（宽高缺失按 1:1 处理） */
+    private fun fitMemeBox(width: Int, height: Int, maxSide: Float): Pair<Float, Float> =
+        if (width <= 0 || height <= 0) {
+            maxSide to maxSide
+        } else if (width >= height) {
+            maxSide to maxSide * height / width
+        } else {
+            maxSide * width / height to maxSide
+        }
 
     fun getEmoticonInlineContent(
         sizePx: Float
@@ -229,22 +295,26 @@ object EmoticonManager {
     fun init(context: Context) {
         contextRef = WeakReference(context)
         val emoticonCache = getEmoticonDataCache()
-        if (emoticonCache.ids.isEmpty()) {
-            for (i in 1..50) {
-                emoticonIds.add("image_emoticon$i")
-            }
-            for (i in 61..101) {
-                emoticonIds.add("image_emoticon$i")
-            }
-            for (i in 125..137) {
-                emoticonIds.add("image_emoticon$i")
-            }
-        } else {
-            emoticonIds.addAll(emoticonCache.ids)
+        // 默认集合先落地，再用缓存覆盖：缓存里有服务端学到的真实 name/id 对照（含对默认表的修正），
+        // 但新版本新增的默认表情也不能因为「缓存非空」而永远缺席
+        for (i in 1..50) {
+            emoticonIds.add("image_emoticon$i")
         }
-        if (emoticonCache.mapping.isEmpty()) {
-            emoticonMapping.putAll(DEFAULT_EMOTICON_MAPPING)
-        } else {
+        for (i in 61..101) {
+            emoticonIds.add("image_emoticon$i")
+        }
+        for (i in 125..137) {
+            emoticonIds.add("image_emoticon$i")
+        }
+        emoticonIds.addAll(emoticonCache.ids)
+        // 每次 init 都会把默认集合再加一遍：缓存文件里的列表必须去重，否则每启动几次就翻倍膨胀
+        emoticonIds.distinct().let {
+            emoticonIds.clear()
+            emoticonIds.addAll(it)
+        }
+        emoticonMapping.putAll(DEFAULT_EMOTICON_MAPPING)
+        // 只信任当前版本写出的映射；旧缓存的对照可能是错误登记（issue #31/#33），重建后自然修正
+        if (emoticonCache.version >= MAPPING_VERSION) {
             emoticonMapping.putAll(emoticonCache.mapping)
         }
         updateCache()
@@ -262,7 +332,7 @@ object EmoticonManager {
             if (emoticonDataCacheFile.exists() || emoticonDataCacheFile.createNewFile()) {
                 FileUtil.writeFile(
                     emoticonDataCacheFile,
-                    EmoticonCache(emoticonIds, emoticonMapping).toJson(),
+                    EmoticonCache(MAPPING_VERSION, emoticonIds, emoticonMapping).toJson(),
                     false
                 )
             }
@@ -296,11 +366,10 @@ object EmoticonManager {
     }
 
     fun getAllEmoticon(): List<Emoticon> {
-        return emoticonIds.map { id ->
-            Emoticon(
-                id = id,
-                name = getEmoticonNameById(id) ?: ""
-            )
+        // 以「名字」为准出面板：发送走 #(名字)，只要名字可发就必须可选；
+        // 反之按 id 反查名字会丢名字（多个名字指向同一 id 时只留第一个，issue #31）。
+        return emoticonMapping.map { (name, id) ->
+            Emoticon(id = id, name = name)
         }
     }
 
@@ -391,20 +460,37 @@ object EmoticonManager {
     }
 
     fun registerEmoticon(id: String, name: String) {
+        // 没有名字的表情无法通过 #(名字) 发送，登记进面板只会多一个发不出去的格子
+        if (name.isBlank()) return
         val realId = if (id == "image_emoticon") "image_emoticon1" else id
         var changed = false
         if (!emoticonIds.contains(realId)) {
             emoticonIds.add(realId)
             changed = true
         }
-        if (!emoticonMapping.containsKey(name)) {
-            emoticonMapping[name] = realId
-            changed = true
+        val existing = emoticonMapping[name]
+        if (existing != realId) {
+            // 同名不同 id：以服务端下发的 id 为准。否则本地旧映射会让「面板选中的那张图」
+            // 和「发送后服务端按名字还原的那张图」不是同一张（issue #31）。
+            // 只有规范的 image_emoticonN 才覆盖，避免脏数据把名字改到兜底 id 上。
+            if (CANONICAL_EMOTICON_ID.matches(realId)) {
+                emoticonMapping[name] = realId
+                changed = true
+            }
+            if (existing != null) {
+                android.util.Log.w(
+                    "EmoticonManager",
+                    "emoticon id conflict: name=$name local=$existing server=$realId"
+                )
+            }
         }
         if (changed) {
+            mappingRevision++
             coroutineScope.launch {
                 updateCache()
             }
         }
     }
+
+    private val CANONICAL_EMOTICON_ID = Regex("image_emoticon\\d+")
 }

@@ -124,6 +124,7 @@ import com.huanchengfly.tieba.post.utils.StringUtil
 import com.huanchengfly.tieba.post.utils.StringUtil.getShortNumString
 import com.huanchengfly.tieba.post.utils.TiebaUtil
 import com.huanchengfly.tieba.post.ui.page.LocalNavigator
+import com.huanchengfly.tieba.post.ui.page.destinations.ChatPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.FollowListPageDestination
 import com.huanchengfly.tieba.post.ui.page.settings.components.SettingRow
 import com.ramcosta.composedestinations.annotation.Destination
@@ -382,6 +383,7 @@ private fun UserProfileToolbar(
 ) {
     val context = LocalContext.current
     val account = LocalAccount.current
+    val navigator = LocalNavigator.current
 
     Toolbar(
         title = {
@@ -433,6 +435,19 @@ private fun UserProfileToolbar(
                             Text(text = stringResource(id = R.string.menu_add_user_to_white_list))
                         }
                         if (account != null) {
+                            if (com.huanchengfly.tieba.post.im.PrivateMessaging.enabled) DropdownMenuItem(
+                                onClick = {
+                                    navigator.navigate(
+                                        ChatPageDestination(
+                                            peerUid = it.get { id },
+                                            peerName = it.get { name }.ifEmpty { it.get { nameShow } },
+                                            peerPortrait = it.get { portrait },
+                                        )
+                                    )
+                                }
+                            ) {
+                                Text(text = stringResource(id = R.string.menu_send_chat))
+                            }
                             DropdownMenuItem(
                                 onClick = onSetUserBlack
                             ) {
@@ -559,7 +574,7 @@ private fun UserProfileContentNormal(
                         .padding(paddingValues)
                         .nestedScroll(headerNestedScrollConnection)
                 ) {
-                    val pages = remember {
+                    val pages = remember(isSelf) {
                         listOfNotNull(
                             UserProfilePageData(
                                 id = "threads",
@@ -571,6 +586,8 @@ private fun UserProfileContentNormal(
                                 },
                                 content = { user, fluid ->
                                     UserPostPage(
+                                        authorName = user.get { nameShow.ifBlank { name } },
+                                        authorPortrait = user.get { portrait },
                                         uid = user.get { id },
                                         isThread = true,
                                         fluid = fluid,
@@ -587,6 +604,8 @@ private fun UserProfileContentNormal(
                                 },
                                 content = { user, fluid ->
                                     UserPostPage(
+                                        authorName = user.get { nameShow.ifBlank { name } },
+                                        authorPortrait = user.get { portrait },
                                         uid = user.get { id },
                                         isThread = false,
                                         fluid = fluid,
@@ -603,6 +622,8 @@ private fun UserProfileContentNormal(
                                 },
                                 content = { user, fluid ->
                                     UserLikeForumPage(
+                                        privacy = user.get { privSets?.like },
+                                        viewerIsFriend = user.get { is_friend == 1 },
                                         uid = user.get { id },
                                         fluid = fluid,
                                     )
@@ -722,7 +743,7 @@ private fun UserProfileContentExpanded(
                         .align(Alignment.TopCenter),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    val pages = remember {
+                    val pages = remember(isSelf) {
                         listOfNotNull(
                             UserProfilePageData(
                                 id = "threads",
@@ -734,6 +755,8 @@ private fun UserProfileContentExpanded(
                                 },
                                 content = { user, expanded ->
                                     UserPostPage(
+                                        authorName = user.get { nameShow.ifBlank { name } },
+                                        authorPortrait = user.get { portrait },
                                         uid = user.get { id },
                                         isThread = true,
                                         fluid = expanded,
@@ -751,6 +774,8 @@ private fun UserProfileContentExpanded(
                                 },
                                 content = { user, expanded ->
                                     UserPostPage(
+                                        authorName = user.get { nameShow.ifBlank { name } },
+                                        authorPortrait = user.get { portrait },
                                         uid = user.get { id },
                                         isThread = false,
                                         fluid = expanded,
@@ -768,6 +793,8 @@ private fun UserProfileContentExpanded(
                                 },
                                 content = { user, expanded ->
                                     UserLikeForumPage(
+                                        privacy = user.get { privSets?.like },
+                                        viewerIsFriend = user.get { is_friend == 1 },
                                         uid = user.get { id },
                                         fluid = expanded,
                                         enablePullRefresh = expanded,

@@ -1552,8 +1552,12 @@ object MixedTiebaApiImpl : ITiebaApi {
         )
     }
 
-    override fun userPostFlow(uid: Long, page: Int, isThread: Boolean): Flow<UserPostResponse> {
-        return RetrofitTiebaApi.OFFICIAL_PROTOBUF_TIEBA_V12_API.userPostFlow(
+    override fun userPostFlow(uid: Long, page: Int, isThread: Boolean, publicOnly: Boolean): Flow<UserPostResponse> {
+        val ownThreads = isThread && AccountUtil.currentAccount?.uid == uid.toString()
+        require(!publicOnly || ownThreads) { "公开范围核对只用于当前账号的主题帖" }
+        val version = if (ownThreads) ClientVersion.TIEBA_V22 else ClientVersion.TIEBA_V12
+        val api = if (ownThreads) RetrofitTiebaApi.OFFICIAL_PROTOBUF_TIEBA_V22_API else RetrofitTiebaApi.OFFICIAL_PROTOBUF_TIEBA_V12_API
+        return api.userPostFlow(
             buildProtobufRequestBody(
                 UserPostRequest(
                     UserPostRequestData(
@@ -1562,16 +1566,16 @@ object MixedTiebaApiImpl : ITiebaApi {
                         is_thread = if (isThread) 1 else 0,
                         need_content = 1,
                         pn = page,
-                        common = buildCommonRequest(clientVersion = ClientVersion.TIEBA_V12),
+                        common = buildCommonRequest(clientVersion = version),
                         scr_w = getScreenWidth(),
                         scr_h = getScreenHeight(),
                         scr_dip = App.ScreenInfo.DENSITY.toDouble(),
                         q_type = 1,
-                        is_view_card = if (isThread) 1 else 0,
+                        is_view_card = if (isThread) { if (publicOnly) 2 else 1 } else 0,
                         subtype = 0.takeUnless { isThread },
                     )
                 ),
-                clientVersion = ClientVersion.TIEBA_V12,
+                clientVersion = version,
                 needSToken = true
             )
         )

@@ -41,6 +41,7 @@ import com.github.panpf.sketch.request.internal.RequestContext
 import com.huanchengfly.tieba.post.components.ClipBoardLinkDetector
 import com.huanchengfly.tieba.post.components.OAIDGetter
 
+import com.huanchengfly.tieba.post.im.ImManager
 import com.huanchengfly.tieba.post.ui.common.theme.compose.dynamicTonalPalette
 import com.huanchengfly.tieba.post.ui.common.theme.interfaces.ThemeSwitcher
 import com.huanchengfly.tieba.post.ui.common.theme.utils.ThemeUtils
@@ -51,6 +52,8 @@ import com.huanchengfly.tieba.post.utils.ClientUtils
 import com.huanchengfly.tieba.post.utils.DEFAULT_SEED_COLOR
 import com.huanchengfly.tieba.post.utils.EmoticonManager
 import com.huanchengfly.tieba.post.utils.SharedPreferencesUtil
+import com.huanchengfly.tieba.post.utils.StartupMetrics
+import com.huanchengfly.tieba.post.ui.common.theme.compose.SoftDarkText
 import com.huanchengfly.tieba.post.utils.ThemeUtil
 import com.huanchengfly.tieba.post.utils.Util
 import com.huanchengfly.tieba.post.utils.appPreferences
@@ -90,11 +93,14 @@ class App : Application(), SketchFactory {
     override fun onCreate() {
         INSTANCE = this
         super.onCreate()
+        StartupMetrics.mark("application_created")
         ClientUtils.init(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             setWebViewPath(this)
         }
         AccountUtil.init(this)
+        // 登录态下启动 IM 私信长连接（内部自幂等，未登录不启动）
+        if (com.huanchengfly.tieba.post.im.PrivateMessaging.enabled) ImManager.onAppStart()
         migrateThemeDefaults()
         val isSelfBuild = applicationMetaData.getBoolean("is_self_build")
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
@@ -305,6 +311,17 @@ class App : Application(), SketchFactory {
         @SuppressLint("DiscouragedApi")
         fun getColorByAttr(context: Context, attrId: Int, theme: String): Int {
             if (!isInitialized) return context.getColorCompat(getDefaultColorResId(attrId))
+            if (ThemeUtil.isNightMode(theme) && context.appPreferences.softDarkText) {
+                when (attrId) {
+                    R.attr.colorText, R.attr.colorOnNavBarSurface -> return SoftDarkText.PRIMARY_ARGB
+                    R.attr.colorTextSecondary, R.attr.colorOnChip, R.attr.colorUnselected -> return SoftDarkText.SECONDARY_ARGB
+                    R.attr.color_text_disabled -> return 0x61A8A8A8
+                    R.attr.colorToolbarItem, R.attr.colorOnToolbarSurface ->
+                        if (!context.appPreferences.toolbarPrimaryColor) return SoftDarkText.PRIMARY_ARGB
+                    R.attr.colorToolbarItemSecondary ->
+                        if (!context.appPreferences.toolbarPrimaryColor) return SoftDarkText.SECONDARY_ARGB
+                }
+            }
             val resources = context.resources
             when (attrId) {
                 R.attr.colorPrimary -> {

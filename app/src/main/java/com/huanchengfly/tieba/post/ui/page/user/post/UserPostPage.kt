@@ -2,6 +2,15 @@
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.CancellationException
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -84,6 +93,8 @@ import kotlinx.collections.immutable.persistentListOf
 @Composable
 fun UserPostPage(
     uid: Long,
+    authorName: String = "",
+    authorPortrait: String = "",
     isThread: Boolean = true,
     fluid: Boolean = false,
     enablePullRefresh: Boolean = false,
@@ -126,6 +137,33 @@ fun UserPostPage(
         prop1 = UserPostUiState::hidePost,
         initial = false
     )
+
+    val viewerUid = AccountUtil.LocalAccount.current?.uid.orEmpty()
+    val canManage = viewerUid == uid.toString()
+    val refreshCompleted by viewModel.uiState.collectPartialAsState(
+        prop1 = UserPostUiState::refreshCompleted, initial = 0L)
+    var publicIds by remember(uid, viewerUid) { mutableStateOf<Set<Long>?>(null) }
+    var visibilityRevision by remember(uid, viewerUid) { mutableLongStateOf(0L) }
+    var visibilitySyncing by remember(uid, viewerUid) { mutableStateOf(false) }
+    var visibilityError by remember(uid, viewerUid) { mutableStateOf<String?>(null) }
+    var visibilityRetry by remember(uid, viewerUid) { mutableIntStateOf(0) }
+    LaunchedEffect(uid, viewerUid, isThread, isRefreshing, refreshCompleted, visibilityRetry) {
+        if (!isThread || !canManage || isRefreshing) return@LaunchedEffect
+        visibilitySyncing = true
+        visibilityError = null
+        try {
+            val result = withTimeout(45_000) { withContext(Dispatchers.IO) { loadPublicThreadIndex(uid) } }
+            if (AccountUtil.currentAccount?.uid == viewerUid) {
+                publicIds = result
+                visibilityRevision++
+            }
+        } catch (_: TimeoutCancellationException) {
+            visibilityError = "可见范围同步超时，未确认的帖子不会标为公开"
+        } catch (cancel: CancellationException) { throw cancel
+        } catch (error: Exception) {
+            visibilityError = "可见范围同步失败，可点击重试"
+        } finally { visibilitySyncing = false }
+    }
 
     val isEmpty by remember {
         derivedStateOf { posts.isEmpty() }
@@ -216,14 +254,24 @@ fun UserPostPage(
             ) {
                 UserPostList(
                     data = posts,
+                    canManage = canManage,
+                    publicIds = publicIds,
+                    visibilityRevision = visibilityRevision,
+                    visibilitySyncing = visibilitySyncing,
+                    visibilityError = visibilityError,
+                    onRetryVisibility = { visibilityRetry++ },
+                    authorName = authorName,
+                    authorPortrait = authorPortrait,
                     fluid = fluid,
                     lazyListState = lazyListState,
                     onTogglePrivacy = { fid, tid, pid, hide, onDone ->
                         scope.launch {
                             try {
+                                check(AccountUtil.currentAccount?.uid == uid.toString()) { "账号已切换" }
                                 TiebaApi.getInstance()
                                     .setThreadPrivacyFlow(fid, tid, pid, hide)
-                                    .collect {
+                                    .collect { response ->
+                                        check(response.errorCode == 0) { response.errorMsg.ifBlank { "操作未成功" } }
                                         onDone(true)
                                         Toast.makeText(
                                             context,
@@ -232,7 +280,8 @@ fun UserPostPage(
                                         ).show()
                                         viewModel.send(UserPostUiIntent.Refresh(uid, isThread))
                                     }
-                            } catch (e: Throwable) {
+                            } catch (cancel: CancellationException) { throw cancel
+                            } catch (e: Exception) {
                                 onDone(false)
                                 Toast.makeText(
                                     context,
@@ -242,9 +291,10 @@ fun UserPostPage(
                             }
                         }
                     },
-                    onDeleteThread = { fid, tid, name ->
+                    onDeleteThread = { fid, tid, name, onDone ->
                         scope.launch {
                             try {
+                                check(AccountUtil.currentAccount?.uid == uid.toString()) { "账号已切换" }
                                 TiebaApi.getInstance()
                                     .delThreadFlow(
                                         forumId = fid,
@@ -254,18 +304,20 @@ fun UserPostPage(
                                         delMyThread = true,
                                         isHide = false
                                     )
-                                    .collect {
+                                    .collect { response ->
+                                        check(response.errorCode == 0) { response.errorMsg.ifBlank { "操作未成功" } }
                                         ThreadPrivacyCache.remove(context, tid)
                                         Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
                                         viewModel.send(UserPostUiIntent.Refresh(uid, isThread))
                                     }
-                            } catch (e: Throwable) {
+                            } catch (cancel: CancellationException) { throw cancel
+                            } catch (e: Exception) {
                                 Toast.makeText(
                                     context,
                                     "删除失败：${e.message}",
                                     Toast.LENGTH_SHORT
                                 ).show()
-                            }
+                            } finally { onDone() }
                         }
                     },
                     onClickItem = { threadId, postId, isSubPost ->
@@ -334,6 +386,14 @@ fun UserPostPage(
 
 @Composable
 private fun UserPostList(
+    publicIds: Set<Long>?,
+    visibilityRevision: Long,
+    visibilitySyncing: Boolean,
+    visibilityError: String?,
+    onRetryVisibility: () -> Unit,
+    canManage: Boolean,
+    authorName: String,
+    authorPortrait: String,
     data: ImmutableList<PostListItemData>,
     fluid: Boolean = false,
     lazyListState: LazyListState = rememberLazyListState(),
@@ -344,12 +404,21 @@ private fun UserPostList(
     onClickForum: (name: String) -> Unit = {},
     onClickOriginThread: (threadId: Long) -> Unit = {},
     onTogglePrivacy: (fid: Long, tid: Long, pid: Long, hide: Boolean, onDone: (Boolean) -> Unit) -> Unit = { _, _, _, _, _ -> },
-    onDeleteThread: (fid: Long, tid: Long, forumName: String) -> Unit = { _, _, _ -> },
+    onDeleteThread: (fid: Long, tid: Long, forumName: String, onDone: () -> Unit) -> Unit = { _, _, _, _ -> },
 ) {
     MyLazyColumn(
         state = lazyListState,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (canManage && (visibilitySyncing || visibilityError != null)) item(key = "visibility_status") {
+            androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(if (visibilitySyncing) "正在核对帖子可见范围…" else visibilityError.orEmpty(),
+                    style = MaterialTheme.typography.caption, color = ExtendedTheme.colors.textSecondary,
+                    modifier = Modifier.weight(1f))
+                if (!visibilitySyncing) TextButton(onClick = onRetryVisibility) { Text("重试") }
+            }
+        }
         items(
             items = data,
             key = {
@@ -359,6 +428,12 @@ private fun UserPostList(
             Container(fluid = fluid) {
                 UserPostItem(
                     post = itemData,
+                    canManage = canManage,
+                    publicIds = publicIds,
+                    visibilityRevision = visibilityRevision,
+                    visibilitySyncing = visibilitySyncing,
+                    authorName = authorName,
+                    authorPortrait = authorPortrait,
                     onClick = onClickItem,
                     onAgree = onAgreeItem,
                     onClickReply = onClickReply,
@@ -375,6 +450,12 @@ private fun UserPostList(
 
 @Composable
 fun UserPostItem(
+    publicIds: Set<Long>? = null,
+    visibilityRevision: Long = 0L,
+    visibilitySyncing: Boolean = false,
+    canManage: Boolean = false,
+    authorName: String = "",
+    authorPortrait: String = "",
     post: PostListItemData,
     onAgree: (PostInfoList) -> Unit,
     modifier: Modifier = Modifier,
@@ -384,40 +465,84 @@ fun UserPostItem(
     onClickForum: (name: String) -> Unit = {},
     onClickOriginThread: (threadId: Long) -> Unit = {},
     onTogglePrivacy: (fid: Long, tid: Long, pid: Long, hide: Boolean, onDone: (Boolean) -> Unit) -> Unit = { _, _, _, _, _ -> },
-    onDeleteThread: (fid: Long, tid: Long, forumName: String) -> Unit = { _, _, _ -> },
+    onDeleteThread: (fid: Long, tid: Long, forumName: String, onDone: () -> Unit) -> Unit = { _, _, _, _ -> },
 ) {
     val item = post.data
     if (post.isThread) {
         val tid = item.get { thread_id }
         val itemContext = LocalContext.current
-        // hide_post 在列表接口里基本都是 0，用本地缓存兜底，保证切换后状态能保持
-        var localHidden by remember(tid) {
-            mutableStateOf(ThreadPrivacyCache.isHidden(itemContext, tid))
+        val cachedHidden = remember(tid, canManage) {
+            if (canManage) ThreadPrivacyCache.getHidden(itemContext, tid) else null
         }
-        val hidden = localHidden || (item.get { hide_post } == 1)
+        var confirmedChange by remember(tid, canManage, visibilityRevision) { mutableStateOf<Boolean?>(null) }
+        val visibility = ThreadVisibility.resolve(tid, publicIds, item.get { hide_post } == 1,
+            confirmedChange, cachedHidden)
+        val hidden = visibility == ThreadVisibility.OnlySelf
+        var menu by remember(tid) { mutableStateOf(false) }
+        var privacyDialog by remember(tid) { mutableStateOf(false) }
+        var targetHidden by remember(tid) { mutableStateOf(hidden) }
+        var busy by remember(tid) { mutableStateOf(false) }
         var showDeleteConfirm by remember(tid) { mutableStateOf(false) }
 
-        if (showDeleteConfirm) {
+        if (privacyDialog && canManage) {
+            AlertDialog(
+                onDismissRequest = { privacyDialog = false },
+                title = { Text("帖子可见范围") },
+                text = {
+                    Column {
+                        listOf(false to "公开", true to "仅自己可见").forEach { (value, label) ->
+                            androidx.compose.foundation.layout.Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { targetHidden = value }
+                            ) {
+                                androidx.compose.material.RadioButton(selected = targetHidden == value,
+                                    onClick = { targetHidden = value })
+                                Text(label)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(enabled = !visibilitySyncing && !busy, onClick = {
+                        privacyDialog = false
+                        if (!busy) {
+                            busy = true
+                            val target = targetHidden
+                            onTogglePrivacy(item.get { forum_id }, tid, item.get { post_id }, target) { ok ->
+                                busy = false
+                                if (ok) {
+                                    ThreadPrivacyCache.setHidden(itemContext, tid, target)
+                                    confirmedChange = target
+                                }
+                            }
+                        }
+                    }) { Text("保存") }
+                },
+                dismissButton = { TextButton(onClick = { privacyDialog = false }) { Text("取消") } }
+            )
+        }
+        if (showDeleteConfirm && canManage) {
             AlertDialog(
                 onDismissRequest = { showDeleteConfirm = false },
-                title = { Text(text = stringResource(id = R.string.title_delete)) },
-                text = { Text(text = "确定删除这条帖子吗？") },
+                title = { Text("删除帖子") },
+                text = { Text("确定删除这条帖子吗？删除后无法在这里恢复。") },
                 confirmButton = {
                     TextButton(onClick = {
                         showDeleteConfirm = false
-                        onDeleteThread(item.get { forum_id }, tid, item.get { forum_name })
-                    }) { Text(text = stringResource(id = R.string.title_delete)) }
+                        if (!busy) {
+                            busy = true
+                            onDeleteThread(item.get { forum_id }, tid, item.get { forum_name }) { busy = false }
+                        }
+                    }) { Text("删除", color = MaterialTheme.colors.error) }
                 },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteConfirm = false }) {
-                        Text(text = stringResource(id = android.R.string.cancel))
-                    }
-                }
+                dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } }
             )
         }
-
         FeedCard(
             item = item,
+            profileCard = true,
+            profileAuthorName = authorName,
+            profileAuthorPortrait = authorPortrait,
             onClick = { onClick(it.thread_id, null, false) },
             onAgree = onAgree,
             modifier = modifier,
@@ -425,37 +550,29 @@ fun UserPostItem(
             onClickUser = onClickUser,
             onClickForum = onClickForum,
             onClickOriginThread = { onClickOriginThread(it.tid.toLong()) },
-            // 胶囊放在卡片头部右侧，和昵称/时间同一行
             headerAction = {
-                Text(
-                    text = stringResource(
-                        id = if (hidden) R.string.title_only_self_visible else R.string.title_public
-                    ),
+                if (canManage) Text(
+                    text = if (visibility == ThreadVisibility.Unknown && visibilitySyncing) "确认中…" else visibility.label,
                     style = MaterialTheme.typography.caption,
                     color = ExtendedTheme.colors.textSecondary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(100))
-                        .background(ExtendedTheme.colors.chip)
-                        .combinedClickable(
-                            onClick = {
-                                val target = !hidden
-                                onTogglePrivacy(
-                                    item.get { forum_id },
-                                    tid,
-                                    item.get { post_id },
-                                    target,
-                                    { ok ->
-                                        if (ok) {
-                                            ThreadPrivacyCache.setHidden(itemContext, tid, target)
-                                            localHidden = target
-                                        }
-                                    }
-                                )
-                            },
-                            onLongClick = { showDeleteConfirm = true }
-                        )
-                        .padding(horizontal = 10.dp, vertical = 3.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(100)).background(ExtendedTheme.colors.chip)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
                 )
+                if (canManage) Box {
+                    androidx.compose.material.IconButton(onClick = { menu = true }, enabled = !busy && !visibilitySyncing) {
+                        androidx.compose.material.Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Rounded.MoreHoriz,
+                            contentDescription = "帖子更多操作", tint = ExtendedTheme.colors.textSecondary)
+                    }
+                    androidx.compose.material.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        androidx.compose.material.DropdownMenuItem(onClick = {
+                            menu = false; targetHidden = hidden; privacyDialog = true
+                        }) { Text("可见范围：" + visibility.label) }
+                        androidx.compose.material.DropdownMenuItem(onClick = {
+                            menu = false; showDeleteConfirm = true
+                        }) { Text("删除帖子", color = MaterialTheme.colors.error) }
+                    }
+                }
             },
         )
     } else {

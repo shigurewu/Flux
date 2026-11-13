@@ -29,6 +29,7 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.huanchengfly.tieba.post.arch.exhaustMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filterIsInstance
@@ -62,7 +63,7 @@ class PersonalizedViewModel @Inject constructor() :
         @OptIn(ExperimentalCoroutinesApi::class)
         override fun toPartialChangeFlow(intentFlow: Flow<PersonalizedUiIntent>): Flow<PersonalizedPartialChange> =
             merge(
-                intentFlow.filterIsInstance<PersonalizedUiIntent.Refresh>().flatMapConcat { produceRefreshPartialChange() },
+                intentFlow.filterIsInstance<PersonalizedUiIntent.Refresh>().exhaustMap { produceRefreshPartialChange() },
                 intentFlow.filterIsInstance<PersonalizedUiIntent.LoadMore>().flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<PersonalizedUiIntent.Dislike>().flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<PersonalizedUiIntent.Agree>().flatMapConcat { it.producePartialChange() },
@@ -293,6 +294,7 @@ sealed interface PersonalizedPartialChange : PartialChange<PersonalizedUiState> 
                     val newData = (data + oldState.data).distinctById()
                     oldState.copy(
                         isRefreshing = false,
+                    refreshCompleted = oldState.refreshCompleted + 1,
                         currentPage = 1,
                         data = newData,
                         refreshPosition = if (oldState.data.isEmpty()) 0 else (newData.size - oldSize),
@@ -301,6 +303,7 @@ sealed interface PersonalizedPartialChange : PartialChange<PersonalizedUiState> 
 
                 is Failure -> oldState.copy(
                     isRefreshing = false,
+                    refreshCompleted = oldState.refreshCompleted + 1,
                     error = error.wrapImmutable()
                 )
             }
@@ -347,6 +350,7 @@ sealed interface PersonalizedPartialChange : PartialChange<PersonalizedUiState> 
 }
 
 data class PersonalizedUiState(
+    val refreshCompleted: Long = 0L,
     val isRefreshing: Boolean = true,
     val isLoadingMore: Boolean = false,
     val error: ImmutableHolder<Throwable>? = null,

@@ -48,11 +48,22 @@ import kotlinx.collections.immutable.persistentListOf
 @Composable
 fun UserLikeForumPage(
     uid: Long,
+    privacy: Int? = null,
+    viewerIsFriend: Boolean = false,
     fluid: Boolean = false,
     enablePullRefresh: Boolean = false,
-    viewModel: UserLikeForumViewModel = pageViewModel(),
+    viewModel: UserLikeForumViewModel = pageViewModel(key = "user_forums_$uid"),
 ) {
     val navigator = LocalNavigator.current
+    val visibility = ForumVisibility.fromServer(privacy)
+    val self = com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount.current?.uid == uid.toString()
+    if (!visibility.canView(self, viewerIsFriend)) {
+        Column {
+            ForumPrivacyHeader(visibility, self)
+            Text(if (visibility == ForumVisibility.Friends) "关注的吧仅好友可见" else "对方已隐藏关注的吧", modifier = Modifier.padding(24.dp), color = ExtendedTheme.colors.textSecondary)
+        }
+        return
+    }
 
     LazyLoad(loaded = viewModel.initialized) {
         viewModel.send(UserLikeForumUiIntent.Refresh(uid))
@@ -97,7 +108,10 @@ fun UserLikeForumPage(
         viewModel.send(UserLikeForumUiIntent.Refresh(uid))
     }
 
+    Column {
+    ForumPrivacyHeader(visibility, self)
     StateScreen(
+        modifier = Modifier.weight(1f),
         isEmpty = isEmpty,
         isError = isError,
         isLoading = isRefreshing,
@@ -145,6 +159,7 @@ fun UserLikeForumPage(
                 contentColor = ExtendedTheme.colors.onPrimary,
             )
         }
+    }
     }
 }
 

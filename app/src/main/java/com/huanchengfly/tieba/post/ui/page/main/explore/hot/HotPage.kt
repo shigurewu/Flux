@@ -21,8 +21,10 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import com.huanchengfly.tieba.post.ui.page.main.explore.BindExploreRefresh
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberGlassPullRefreshState
+import com.huanchengfly.tieba.post.ui.widgets.compose.glassPullRefresh
+import com.huanchengfly.tieba.post.ui.widgets.compose.GlassRefreshIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,7 +64,6 @@ import com.huanchengfly.tieba.post.ui.page.destinations.ThreadPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.TopicDetailPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.UserProfilePageDestination
 import com.huanchengfly.tieba.post.ui.widgets.compose.Container
-import com.huanchengfly.tieba.post.ui.widgets.compose.PullRefreshLogoIndicator
 import com.huanchengfly.tieba.post.ui.widgets.compose.FeedCard
 import com.huanchengfly.tieba.post.ui.widgets.compose.feedCardListSpacing
 import com.huanchengfly.tieba.post.ui.widgets.compose.LazyLoad
@@ -85,23 +86,6 @@ fun HotPage(
     LazyLoad(loaded = viewModel.initialized) {
         viewModel.send(HotUiIntent.Load)
         viewModel.initialized = true
-    }
-    onGlobalEvent<GlobalEvent.Refresh>(
-        filter = { it.key == "hot" }
-    ) {
-        viewModel.send(HotUiIntent.Load)
-    }
-
-    // 底栏再次点击「动态」：直接监听 tick 触发刷新，避免事件转发链断掉。
-    // 同上：从当前 tick 起步，避免切回动态页时被历史 tick 触发刷新。
-    val tabReselect = LocalTabReselect.current
-    var lastHandledReselectTick by remember { mutableIntStateOf(tabReselect.tick) }
-    LaunchedEffect(tabReselect.tick, tabReselect.tabId) {
-        if (tabReselect.tick == lastHandledReselectTick) return@LaunchedEffect
-        lastHandledReselectTick = tabReselect.tick
-        if (tabReselect.tabId == "explore") {
-            viewModel.send(HotUiIntent.Load)
-        }
     }
     val navigator = LocalNavigator.current
     val isLoading by viewModel.uiState.collectPartialAsState(
@@ -128,11 +112,17 @@ fun HotPage(
         prop1 = HotUiState::isLoadingThreadList,
         initial = false
     )
-    val pullRefreshState = rememberPullRefreshState(
+    val refreshCompleted by viewModel.uiState.collectPartialAsState(
+        prop1 = HotUiState::refreshCompleted, initial = 0L)
+    val pullRefreshState = rememberGlassPullRefreshState(
+        refreshCompleted = refreshCompleted,
         refreshing = isLoading,
         onRefresh = { viewModel.send(HotUiIntent.Load) })
-    Box(modifier = Modifier.pullRefresh(pullRefreshState)) {
+    val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    BindExploreRefresh("hot", pullRefreshState, lazyListState)
+    Box(modifier = Modifier.glassPullRefresh(pullRefreshState)) {
         MyLazyColumn(
+            state = lazyListState,
             verticalArrangement = Arrangement.spacedBy(feedCardListSpacing()),
             contentPadding = PaddingValues(top = 4.dp, bottom = LocalMainBottomInsets.current),
             modifier = Modifier
@@ -397,13 +387,7 @@ fun HotPage(
             }
         }
 
-        PullRefreshLogoIndicator(
-            refreshing = isLoading,
-            state = pullRefreshState,
-            modifier = Modifier.align(Alignment.TopCenter),
-            backgroundColor = ExtendedTheme.colors.pullRefreshIndicator,
-            contentColor = ExtendedTheme.colors.onPrimary,
-        )
+        GlassRefreshIndicator(state = pullRefreshState, modifier = Modifier.align(Alignment.TopCenter))
     }
 }
 

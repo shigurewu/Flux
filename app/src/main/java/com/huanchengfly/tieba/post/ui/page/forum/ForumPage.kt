@@ -106,6 +106,7 @@ import com.huanchengfly.tieba.post.ui.page.destinations.ReplyPageDestination
 import com.huanchengfly.tieba.post.ui.page.forum.generaltablist.GeneralTabListPage
 import com.huanchengfly.tieba.post.ui.page.forum.generaltablist.GeneralTabListUiEvent
 import com.huanchengfly.tieba.post.ui.page.forum.threadlist.ForumThreadListPage
+import com.huanchengfly.tieba.post.ui.page.forum.threadlist.ForumThreadListType
 import com.huanchengfly.tieba.post.ui.page.forum.threadlist.ForumThreadListUiEvent
 import com.huanchengfly.tieba.post.ui.widgets.compose.Avatar
 import com.huanchengfly.tieba.post.ui.widgets.compose.AvatarPlaceholder
@@ -150,6 +151,17 @@ import kotlin.math.min
 
 private val LoadDistance = 70.dp
 
+/**
+ * `FrsTabInfo.tab_type` 的取值，来自服务端 `nav_tab_info.tab`。
+ *
+ * 这两个数字是贴吧接口的既有约定，不是本地魔数：
+ * - [TAB_TYPE_HOT] = 13：热门分区。**不是每个吧都有**（抗压背锅吧/孙笑川吧有，李毅吧/原神吧没有，
+ *   后者的首个 tab 是 `tab_type = 14` 的「最新」），所以只能按「有没有」判断，不能假定存在。
+ * - [TAB_TYPE_GENERAL] = 15：通用自定义分区，配合 `is_general_tab == 1` 才是可渲染的普通页。
+ */
+private const val TAB_TYPE_HOT = 13
+private const val TAB_TYPE_GENERAL = 15
+
 fun getSortType(
     context: Context,
     forumName: String,
@@ -165,6 +177,15 @@ suspend fun setSortType(
 ) {
     context.dataStore.edit {
         it[intPreferencesKey("${forumName}_sort_type")] = sortType
+    }
+}
+
+fun getLastTabIndex(context: Context, forumName: String): Int =
+    context.dataStore.getInt("${forumName}_tab_index", -1)
+
+suspend fun setLastTabIndex(context: Context, forumName: String, tabIndex: Int) {
+    context.dataStore.edit {
+        it[intPreferencesKey("${forumName}_tab_index")] = tabIndex
     }
 }
 
@@ -451,12 +472,40 @@ fun ForumPage(
     )
     val generalTabs by remember {
         derivedStateOf {
-            navTabInfo?.tab?.filter { it.isGeneralTab == 1 }?.filter { it.tabType == 15 } ?: emptyList()
+            navTabInfo?.tab?.filter { it.isGeneralTab == 1 }?.filter { it.tabType == TAB_TYPE_GENERAL } ?: emptyList()
         }
     }
 
+    val hasHotTab by remember {
+        derivedStateOf { navTabInfo?.tab?.any { it.tabType == TAB_TYPE_HOT } ?: false }
+    }
+    val hotIndex = 0
+    val latestIndex = if (hasHotTab) 1 else 0
+    val goodIndex = latestIndex + 1
+    val generalStart = goodIndex + 1
+    val totalPageCount = generalStart + generalTabs.size
+
     val account = LocalAccount.current
-    val pagerState = rememberPagerState(pageCount = { 2 + generalTabs.size })
+    // 记忆落地方案：进吧后默认回到上次浏览的 tab，符合用户「接着上次看」的预期。
+    // 首次进吧（无记忆）仍落「最新」；只有吧存在「热门」tab 时，「热门」才有资格被记住。
+    // navTabInfo 与 forumInfo 同源于一次 Load.Success，pager 首次组合时记忆与 hasHotTab
+    // 已是最终值，不存在先渲染再纠正的中间态。
+    val initialTab by remember {
+        mutableIntStateOf(
+            getLastTabIndex(context, forumName).let { lastTab ->
+                when {
+                    lastTab == 0 -> 0
+                    lastTab > 0 && lastTab < totalPageCount -> lastTab
+                    else -> latestIndex
+                }
+            }
+        )
+    }
+    val pagerState = rememberPagerState(
+        initialPage = initialTab,
+        pageCount = { totalPageCount }
+    )
+    val hotListState = rememberLazyListState()
     val latestListState = rememberLazyListState()
     val goodListState = rememberLazyListState()
 
@@ -466,7 +515,23 @@ fun ForumPage(
         }
     }
 
-    val currentListState = if (currentPage == 0) latestListState else goodListState
+    // 记住上次浏览的 tab，下次进吧直接回到该 tab
+    LaunchedEffect(currentPage) {
+        setLastTabIndex(context, forumName, currentPage)
+    }
+
+    val currentListState = when {
+        hasHotTab && currentPage == hotIndex -> hotListState
+        currentPage == latestIndex -> latestListState
+        currentPage == goodIndex -> goodListState
+        else -> latestListState
+    }
+
+    val currentThreadListType = when {
+        hasHotTab && currentPage == hotIndex -> ForumThreadListType.Hot
+        currentPage == goodIndex -> ForumThreadListType.Good
+        else -> ForumThreadListType.Latest
+    }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -492,8 +557,12 @@ fun ForumPage(
     }
 
     val enablePullToRefresh by remember {
-        derivedStateOf { currentPage < 2 && isListAtTop && isHeaderExpanded }
+        derivedStateOf { currentPage < generalStart && isListAtTop && isHeaderExpanded }
     }
+
+    // 落地页已由 initialTab（上次记忆）决定：热门排在 index 0，有热门时第 0 页就是热门页，
+    // 没有热门时第 0 页是最新页。navTabInfo 与 forumInfo 来自同一个 Load.Success（ForumViewModel），
+    // pager 首次组合时记忆与 hasHotTab 已是最终值，不需要二次校正。
 
     val isShowTopBarArea by remember {
         derivedStateOf {
@@ -540,18 +609,18 @@ fun ForumPage(
 
     onGlobalEvent<GlobalEvent.AddThreadSuccess>() {
         coroutineScope.launch {
-            if (currentPage >= 2) {
+            if (currentPage >= generalStart) {
                 emitGlobalEvent(GeneralTabListUiEvent.BackToTop)
                 emitGlobalEvent(GeneralTabListUiEvent.Refresh())
             } else {
                 emitGlobalEventSuspend(
                     ForumThreadListUiEvent.BackToTop(
-                        currentPage == 1
+                        currentThreadListType
                     )
                 )
                 emitGlobalEventSuspend(
                     ForumThreadListUiEvent.Refresh(
-                        currentPage == 1,
+                        currentThreadListType,
                         getSortType(
                             context,
                             forumName
@@ -667,18 +736,18 @@ fun ForumPage(
                                 when (context.appPreferences.forumFabFunction) {
                                     "refresh" -> {
                                         coroutineScope.launch {
-                                            if (currentPage >= 2) {
+                                            if (currentPage >= generalStart) {
                                                 emitGlobalEvent(GeneralTabListUiEvent.BackToTop)
                                                 emitGlobalEvent(GeneralTabListUiEvent.Refresh())
                                             } else {
                                                 emitGlobalEventSuspend(
                                                     ForumThreadListUiEvent.BackToTop(
-                                                        currentPage == 1
+                                                        currentThreadListType
                                                     )
                                                 )
                                                 emitGlobalEventSuspend(
                                                     ForumThreadListUiEvent.Refresh(
-                                                        currentPage == 1,
+                                                        currentThreadListType,
                                                         getSortType(
                                                             context,
                                                             forumName
@@ -691,12 +760,12 @@ fun ForumPage(
 
                                     "back_to_top" -> {
                                         coroutineScope.launch {
-                                            if (currentPage >= 2) {
+                                            if (currentPage >= generalStart) {
                                                 emitGlobalEvent(GeneralTabListUiEvent.BackToTop)
                                             } else {
                                                 emitGlobalEvent(
                                                     ForumThreadListUiEvent.BackToTop(
-                                                        currentPage == 1
+                                                        currentThreadListType
                                                     )
                                                 )
                                             }
@@ -742,7 +811,7 @@ fun ForumPage(
                     onRefresh = {
                         coroutineScope.emitGlobalEvent(
                             ForumThreadListUiEvent.Refresh(
-                                currentPage == 1,
+                                currentThreadListType,
                                 getSortType(
                                     context,
                                     forumName
@@ -886,11 +955,35 @@ fun ForumPage(
                                         )
                                     )
                                 }
+                                if (hasHotTab) {
+                                    Tab(
+                                        selected = currentPage == hotIndex,
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                pagerState.animateScrollToPage(hotIndex)
+                                            }
+                                        },
+                                        selectedContentColor = ExtendedTheme.colors.primary,
+                                        unselectedContentColor = ExtendedTheme.colors.textSecondary
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .height(48.dp)
+                                                .padding(horizontal = 16.dp)
+                                        ) {
+                                            Text(
+                                                text = stringResource(id = R.string.tab_forum_hot),
+                                                style = tabTextStyle
+                                            )
+                                        }
+                                    }
+                                }
                                 TabClickMenu(
-                                    selected = currentPage == 0,
+                                    selected = currentPage == latestIndex,
                                     onClick = {
                                         coroutineScope.launch {
-                                            pagerState.animateScrollToPage(0)
+                                            pagerState.animateScrollToPage(latestIndex)
                                         }
                                     },
                                     text = {
@@ -915,7 +1008,7 @@ fun ForumPage(
                                                         setSortType(context, forumName, value)
                                                         emitGlobalEvent(
                                                             ForumThreadListUiEvent.Refresh(
-                                                                currentPage == 1,
+                                                                ForumThreadListType.Latest,
                                                                 value
                                                             )
                                                         )
@@ -929,10 +1022,10 @@ fun ForumPage(
                                     unselectedContentColor = ExtendedTheme.colors.textSecondary
                                 )
                                 Tab(
-                                    selected = currentPage == 1,
+                                    selected = currentPage == goodIndex,
                                     onClick = {
                                         coroutineScope.launch {
-                                            pagerState.animateScrollToPage(1)
+                                            pagerState.animateScrollToPage(goodIndex)
                                         }
                                     },
                                     selectedContentColor = ExtendedTheme.colors.primary,
@@ -951,7 +1044,7 @@ fun ForumPage(
                                     }
                                 }
                                 generalTabs.forEach { tab ->
-                                    val tabIndex = 2 + generalTabs.indexOf(tab)
+                                    val tabIndex = generalStart + generalTabs.indexOf(tab)
                                     var currentSortIndex by remember(tab.tabId) {
                                         mutableIntStateOf(0)
                                     }
@@ -1023,16 +1116,28 @@ fun ForumPage(
                                     verticalAlignment = Alignment.Top,
                                     userScrollEnabled = true,
                                 ) { pageIndex ->
-                                    when (pageIndex) {
-                                        0, 1 -> ForumThreadListPage(
+                                    when {
+                                        hasHotTab && pageIndex == hotIndex -> ForumThreadListPage(
                                             forumId = forumInfo!!.get { id },
                                             forumName = forumInfo!!.get { name },
-                                            isGood = pageIndex == 1,
-                                            lazyListState = if (pageIndex == 0) latestListState else goodListState
+                                            type = ForumThreadListType.Hot,
+                                            lazyListState = hotListState
+                                        )
+                                        pageIndex == latestIndex -> ForumThreadListPage(
+                                            forumId = forumInfo!!.get { id },
+                                            forumName = forumInfo!!.get { name },
+                                            type = ForumThreadListType.Latest,
+                                            lazyListState = latestListState
+                                        )
+                                        pageIndex == goodIndex -> ForumThreadListPage(
+                                            forumId = forumInfo!!.get { id },
+                                            forumName = forumInfo!!.get { name },
+                                            type = ForumThreadListType.Good,
+                                            lazyListState = goodListState
                                         )
                                         else -> {
-                                            val tabIndex = pageIndex - 2
-                                            if (tabIndex < generalTabs.size) {
+                                            val tabIndex = pageIndex - generalStart
+                                            if (tabIndex in generalTabs.indices) {
                                                 GeneralTabListPage(
                                                     forumId = forumInfo!!.get { id },
                                                     forumName = forumInfo!!.get { name },

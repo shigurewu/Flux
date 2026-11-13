@@ -21,6 +21,7 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.huanchengfly.tieba.post.arch.exhaustMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filterIsInstance
@@ -50,7 +51,7 @@ class ConcernViewModel @Inject constructor() :
         @OptIn(ExperimentalCoroutinesApi::class)
         override fun toPartialChangeFlow(intentFlow: Flow<ConcernUiIntent>): Flow<ConcernPartialChange> =
             merge(
-                intentFlow.filterIsInstance<ConcernUiIntent.Refresh>().flatMapConcat { produceRefreshPartialChange() },
+                intentFlow.filterIsInstance<ConcernUiIntent.Refresh>().exhaustMap { produceRefreshPartialChange() },
                 intentFlow.filterIsInstance<ConcernUiIntent.LoadMore>().flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<ConcernUiIntent.Agree>().flatMapConcat { it.producePartialChange() },
             )
@@ -166,11 +167,12 @@ sealed interface ConcernPartialChange : PartialChange<ConcernUiState> {
                 Start -> oldState.copy(isRefreshing = true)
                 is Success -> oldState.copy(
                     isRefreshing = false,
+                    refreshCompleted = oldState.refreshCompleted + 1,
                     data = data.distinctById(),
                     hasMore = hasMore,
                     nextPageTag = nextPageTag,
                 )
-                is Failure -> oldState.copy(isRefreshing = false)
+                is Failure -> oldState.copy(isRefreshing = false, refreshCompleted = oldState.refreshCompleted + 1)
             }
 
         data object Start : Refresh()
@@ -214,6 +216,7 @@ sealed interface ConcernPartialChange : PartialChange<ConcernUiState> {
 }
 
 data class ConcernUiState(
+    val refreshCompleted: Long = 0L,
     val isRefreshing: Boolean = true,
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,

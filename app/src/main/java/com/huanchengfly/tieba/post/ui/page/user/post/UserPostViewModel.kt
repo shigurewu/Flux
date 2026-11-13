@@ -71,7 +71,7 @@ class UserPostViewModel @Inject constructor() :
                 .userPostFlow(uid, 1, isThread)
                 .map<UserPostResponse, UserPostPartialChange.Refresh> {
                     checkNotNull(it.data_)
-                    val postList = it.data_.post_list
+                    val postList = it.data_.post_list.map { post -> post.copy(is_thread = if (isThread) 1 else 0) }
                     UserPostPartialChange.Refresh.Success(
                         currentPage = 1,
                         hasMore = postList.isNotEmpty(),
@@ -87,7 +87,7 @@ class UserPostViewModel @Inject constructor() :
                 .userPostFlow(uid, page + 1, isThread)
                 .map<UserPostResponse, UserPostPartialChange.LoadMore> {
                     checkNotNull(it.data_)
-                    val postList = it.data_.post_list
+                    val postList = it.data_.post_list.map { post -> post.copy(is_thread = if (isThread) 1 else 0) }
                     UserPostPartialChange.LoadMore.Success(
                         currentPage = page + 1,
                         hasMore = postList.isNotEmpty(),
@@ -150,6 +150,7 @@ sealed interface UserPostPartialChange : PartialChange<UserPostUiState> {
                 }.toData()
                 oldState.copy(
                     isRefreshing = false,
+                    refreshCompleted = oldState.refreshCompleted + 1,
                     error = null,
                     currentPage = currentPage,
                     hasMore = hasMore,
@@ -160,6 +161,7 @@ sealed interface UserPostPartialChange : PartialChange<UserPostUiState> {
 
             is Failure -> oldState.copy(
                 isRefreshing = false,
+                    refreshCompleted = oldState.refreshCompleted + 1,
                 error = error.wrapImmutable()
             )
         }
@@ -289,6 +291,7 @@ sealed interface UserPostPartialChange : PartialChange<UserPostUiState> {
 }
 
 data class UserPostUiState(
+    val refreshCompleted: Long = 0L,
     val isRefreshing: Boolean = true,
     val isLoadingMore: Boolean = false,
     val error: ImmutableHolder<Throwable>? = null,

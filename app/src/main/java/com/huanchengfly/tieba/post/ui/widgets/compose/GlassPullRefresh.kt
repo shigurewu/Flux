@@ -1,41 +1,19 @@
-﻿package com.huanchengfly.tieba.post.ui.widgets.compose
+package com.huanchengfly.tieba.post.ui.widgets.compose
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.*
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.Velocity
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.*
+import kotlinx.coroutines.*
+import kotlin.math.abs
 
-/**
- * 轻量下拉刷新状态。
- *
- * 自己接管嵌套滚动的位移，避免 Material pullRefresh 与指示器各自做一套动画造成位移叠加：
- * - 下拉时列表不位移，只有指示器按 [offsetPx] 跟随手指；
- * - 反向上滑时先用位移抵消下拉，再交给列表滚动（[cancelDrag]）；
- * - 松手后只有一套回弹动画（[release] / [finishRefresh]）。
- */
 @Stable
 class GlassPullRefreshState internal constructor(
     val thresholdPx: Float,
@@ -44,88 +22,95 @@ class GlassPullRefreshState internal constructor(
 ) {
     var offsetPx by mutableFloatStateOf(0f)
         private set
-
     var refreshing by mutableStateOf(false)
         private set
-
     var onRefresh: () -> Unit = {}
-
-    private var settleJob: Job? = null
-
-    /** 0f~1f，达到 1 即到达触发阈值 */
-    val progress: Float
-        get() = (offsetPx / thresholdPx).coerceIn(0f, 1f)
-
-    val isReady: Boolean
-        get() = offsetPx >= thresholdPx
-
-    private val settleSpec = spring<Float>(
-        dampingRatio = 0.9f,
-        stiffness = Spring.StiffnessMediumLow
-    )
+    private val cycle = RefreshCycle()
+    private var settling by mutableStateOf(false)
+    private var job: Job? = null
+    private var dragged = false
+    val isBusy: Boolean get() = refreshing || cycle.inFlight || settling
+    val progress: Float get() = (offsetPx / thresholdPx).coerceIn(0f, 1f)
+    val isReady: Boolean get() = offsetPx >= thresholdPx
 
     internal fun dragBy(delta: Float) {
-        settleJob?.cancel()
+        if (refreshing || cycle.inFlight) return
+        if (settling) { job?.cancel(); settling = false }
         offsetPx = (offsetPx + delta).coerceIn(0f, maxOffsetPx)
+        dragged = true
     }
-
-    /** 反向（上滑）时先吃掉下拉位移，返回被消费的负值 */
     internal fun cancelDrag(delta: Float): Float {
-        if (offsetPx <= 0f) return 0f
-        settleJob?.cancel()
+        if (refreshing || cycle.inFlight || offsetPx <= 0f || delta >= 0f) return 0f
+        if (settling) { job?.cancel(); settling = false }
         val consumed = minOf(offsetPx, -delta)
         offsetPx -= consumed
+        dragged = true
         return -consumed
     }
-
     internal fun release() {
-        settleJob?.cancel()
-        settleJob = scope.launch {
-            if (isReady) {
-                animateTo(thresholdPx)
-                if (!refreshing) onRefresh()
-            } else {
-                animateTo(0f)
+        if (!dragged) return
+        dragged = false
+        if (isBusy) return
+        if (isReady) requestRefresh() else finishRefresh()
+    }
+    /** Lock before launching the scroll/animation, including the wait for request state. */
+    fun requestRefresh(beforeRefresh: suspend () -> Unit = {}) {
+        if (isBusy || !cycle.tryStart()) return
+        refreshing = true
+        job?.cancel()
+        job = scope.launch {
+            try {
+                beforeRefresh()
+                animate(offsetPx, thresholdPx,
+                    animationSpec = tween(280, easing = FastOutSlowInEasing)) { value, _ -> offsetPx = value }
+                onRefresh()
+            } catch (cancel: CancellationException) {
+                cycle.cancel(); refreshing = false; offsetPx = 0f
+                throw cancel
+            } catch (error: Exception) {
+                cycle.cancel(); refreshing = false; finishRefresh()
+                throw error
             }
         }
     }
-
-    internal fun finishRefresh() {
-        settleJob?.cancel()
-        settleJob = scope.launch { animateTo(0f) }
+    suspend fun animateRefresh() { requestRefresh() }
+    internal fun updateRequest(loading: Boolean, completed: Long) {
+        val finished = cycle.observe(loading, completed)
+        refreshing = loading || cycle.inFlight
+        if (finished && !loading) finishRefresh()
     }
-
-    /**
-     * 由底栏「动态」按钮触发的刷新：
-     * 圆圈从顶部平滑拉下来到阈值位置，随后触发一次真实刷新。
-     *
-     * 与手动下拉共用同一份 offset / refreshing 状态，所以不会出现两套动画抢位移；
-     * 被取消（再次点击、页面销毁）时会把圆圈收回，不会停在半空。
-     */
-    suspend fun animateRefresh() {
-        if (refreshing) return
-        settleJob?.cancel()
-        try {
-            animate(
-                initialValue = offsetPx,
-                targetValue = thresholdPx,
-                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
-            ) { value, _ -> offsetPx = value }
-            if (!refreshing) onRefresh()
-        } catch (cancel: CancellationException) {
-            finishRefresh()
-            throw cancel
+    internal fun finishRefresh() {
+        if (refreshing || cycle.inFlight) return
+        job?.cancel()
+        settling = offsetPx > 0f
+        job = scope.launch {
+            try {
+                animate(offsetPx, 0f, animationSpec = spring<Float>(
+                    dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)) { value, _ -> offsetPx = value }
+                offsetPx = 0f
+            } finally { settling = false }
         }
     }
-
-    internal fun setRefreshing(value: Boolean) {
-        refreshing = value
-    }
-
-    private suspend fun animateTo(target: Float) {
-        val from = offsetPx
-        if (from == target) return
-        animate(from, target, animationSpec = settleSpec) { value, _ -> offsetPx = value }
+    internal val connection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (source != NestedScrollSource.UserInput || abs(available.x) > abs(available.y)) return Offset.Zero
+            return if (available.y < 0f) Offset(0f, cancelDrag(available.y)) else Offset.Zero
+        }
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            if (source != NestedScrollSource.UserInput || refreshing || cycle.inFlight ||
+                abs(available.x) > abs(available.y) || abs(consumed.x) > abs(available.y)) return Offset.Zero
+            if (available.y > 0f && consumed.y <= 0.01f) {
+                val before = offsetPx
+                dragBy(available.y * 0.55f)
+                return Offset(0f, ((offsetPx - before) / 0.55f).coerceAtMost(available.y))
+            }
+            return Offset.Zero
+        }
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            val pulled = dragged && offsetPx > 0f
+            release()
+            return if (pulled) Velocity(0f, available.y) else Velocity.Zero
+        }
     }
 }
 
@@ -135,63 +120,15 @@ fun rememberGlassPullRefreshState(
     onRefresh: () -> Unit,
     threshold: Dp = 72.dp,
     maxOffset: Dp = 150.dp,
+    refreshCompleted: Long = 0L,
 ): GlassPullRefreshState {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val state = remember(threshold, maxOffset) {
-        GlassPullRefreshState(
-            thresholdPx = with(density) { threshold.toPx() },
-            maxOffsetPx = with(density) { maxOffset.toPx() },
-            scope = scope,
-        )
+    val state = remember(threshold, maxOffset, density) {
+        GlassPullRefreshState(with(density) { threshold.toPx() }, with(density) { maxOffset.toPx() }, scope)
     }
     state.onRefresh = onRefresh
-    state.setRefreshing(refreshing)
-    LaunchedEffect(refreshing) {
-        if (!refreshing) state.finishRefresh()
-    }
+    LaunchedEffect(refreshing, refreshCompleted) { state.updateRequest(refreshing, refreshCompleted) }
     return state
 }
-
-fun Modifier.glassPullRefresh(state: GlassPullRefreshState): Modifier =
-    nestedScroll(state.nestedScrollConnection)
-
-private val GlassPullRefreshState.nestedScrollConnection: NestedScrollConnection
-    get() = object : NestedScrollConnection {
-        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-            if (source != NestedScrollSource.Drag) return Offset.Zero
-            // 上滑：先抵消尚未释放的下拉位移，剩余距离才交给列表
-            if (available.y < 0f) {
-                val consumed = cancelDrag(available.y)
-                if (consumed != 0f) return Offset(0f, consumed)
-            }
-            return Offset.Zero
-        }
-
-        override fun onPostScroll(
-            consumed: Offset,
-            available: Offset,
-            source: NestedScrollSource,
-        ): Offset {
-            if (source != NestedScrollSource.Drag) return Offset.Zero
-            // 列表已经到顶、没有可滚动距离时，剩余下拉交给指示器（带阻尼）
-            if (available.y > 0f && !refreshing && consumed.y <= 0.01f) {
-                dragBy(available.y * 0.55f)
-                return available
-            }
-            return Offset.Zero
-        }
-
-        override suspend fun onPreFling(available: Velocity): Velocity {
-            if (offsetPx > 0f) release()
-            return Velocity.Zero
-        }
-
-        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-            if (offsetPx > 0f) release()
-            return Velocity.Zero
-        }
-    }
-
-
-
+fun Modifier.glassPullRefresh(state: GlassPullRefreshState): Modifier = nestedScroll(state.connection)

@@ -1,4 +1,5 @@
 ﻿package com.huanchengfly.tieba.post.ui.page.reply
+import androidx.compose.ui.draw.clip
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -74,6 +75,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -205,6 +207,9 @@ fun ReplyDialog(
         }
     }
 }
+
+/** 官方贴吧客户端包名（普通版 / 极速版），「使用官方客户端回贴」跳转时优先匹配。 */
+private val OFFICIAL_TIEBA_PACKAGES = setOf("com.baidu.tieba", "com.baidu.tieba_mini")
 
 @OptIn(
     ExperimentalLayoutApi::class,
@@ -515,6 +520,17 @@ internal fun ReplyPageContent(
                 modifier = Modifier.weight(1f),
                 fontWeight = FontWeight.Bold
             )
+            if (textLength > 0) {
+                Text(
+                    text = stringResource(R.string.button_clear_draft),
+                    color = ExtendedTheme.colors.textSecondary,
+                    style = MaterialTheme.typography.caption,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable {
+                        editTextView?.setText("")
+                        coroutineScope.launch { DatabaseUtil.deleteDraft(hash) }
+                    }.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
             if (isTopicThread) {
                 Text(
                     text = stringResource(id = R.string.title_only_self_visible),
@@ -574,7 +590,15 @@ internal fun ReplyPageContent(
                     .requiredHeightIn(min = minResult, max = maxResult)
                     .verticalScroll(textFieldScrollState)
             ) {
+                val editorTextColor = ExtendedTheme.colors.text.toArgb()
+                val editorHintColor = ExtendedTheme.colors.textSecondary.toArgb()
+                val editorLinkColor = ExtendedTheme.colors.accent.toArgb()
                 AndroidView(
+                    update = { view ->
+                        view.setTextColor(editorTextColor)
+                        view.setHintTextColor(editorHintColor)
+                        view.setLinkTextColor(editorLinkColor)
+                    },
                     factory = { ctx ->
                         (View.inflate(
                             ctx,
@@ -812,12 +836,18 @@ internal fun ReplyPageContent(
                 intent,
                 PackageManager.MATCH_DEFAULT_ONLY
             ).filter { it.activityInfo.packageName != context.packageName }
+        // 必须显式限定包名：本 app 自己也声明了 com.baidu.tieba://unidispatch，
+        // 只 startActivity 原始隐式 intent 会被系统再次解析，很可能又落回自己（issue #30）
+        val targetPackage = resolveInfos
+            .firstOrNull { it.activityInfo.packageName in OFFICIAL_TIEBA_PACKAGES }
+            ?.activityInfo?.packageName
+            ?: resolveInfos.firstOrNull()?.activityInfo?.packageName
+        if (targetPackage == null) {
+            context.toastShort(R.string.toast_official_client_not_install)
+            return
+        }
         try {
-            if (resolveInfos.isNotEmpty()) {
-                context.startActivity(intent)
-            } else {
-                context.toastShort(R.string.toast_official_client_not_install)
-            }
+            context.startActivity(Intent(intent).setPackage(targetPackage))
         } catch (e: ActivityNotFoundException) {
             context.toastShort(R.string.toast_official_client_not_install)
         }
@@ -988,10 +1018,14 @@ private fun EmoticonPanel(
 private fun ClassicEmoticonGrid(
     onEmoticonClick: (Emoticon) -> Unit,
 ) {
-    val emoticons = remember {
+    // mappingRevision 为 key：服务端覆盖同名表情 id 时（issue #36），格子列表立即重组，
+    // 保证「格子显示的图片」与「点击后按名字解析出的 id」始终一致。
+    val mappingRevision = EmoticonManager.mappingRevision
+    val emoticons = remember(mappingRevision) {
         EmoticonManager.getAllEmoticon()
             .filter { it.name.isNotEmpty() }
     }
+    val hapticFeedback = LocalHapticFeedback.current
     LazyVerticalGrid(
         columns = GridCells.Adaptive(48.dp),
         modifier = Modifier
@@ -1014,7 +1048,11 @@ private fun ClassicEmoticonGrid(
                 modifier = Modifier
                     .size(48.dp)
                     .padding(8.dp)
-                    .clickable { onEmoticonClick(emoticon) },
+                    .clickable {
+                        // 与全站触感口径一致：插入表情轻震一下
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onEmoticonClick(emoticon)
+                    },
             )
         }
     }
@@ -1070,7 +1108,13 @@ private fun MemeEmoticonGrid(
                             }
                             .pointerInput(meme.id) {
                                 detectTapGestures(
-                                    onTap = { onClick(meme) },
+                                    onTap = {
+                                        // 与经典表情网格同口径：插入轻震
+                                        hapticFeedback.performHapticFeedback(
+                                            HapticFeedbackType.TextHandleMove
+                                        )
+                                        onClick(meme)
+                                    },
                                     onLongPress = { offset ->
                                         hapticFeedback.performHapticFeedback(
                                             HapticFeedbackType.LongPress

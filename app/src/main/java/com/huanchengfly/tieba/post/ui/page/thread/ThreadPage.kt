@@ -1,4 +1,6 @@
 package com.huanchengfly.tieba.post.ui.page.thread
+import com.huanchengfly.tieba.post.utils.ThreadReadMarks
+import com.huanchengfly.tieba.post.utils.ThreadReadMark
 
 import android.os.Build
 import android.util.Log
@@ -136,6 +138,7 @@ import com.huanchengfly.tieba.post.api.retrofit.exception.getErrorMessage
 import com.huanchengfly.tieba.post.arch.GlobalEvent
 import com.huanchengfly.tieba.post.arch.ImmutableHolder
 import com.huanchengfly.tieba.post.arch.collectPartialAsState
+import com.huanchengfly.tieba.post.arch.emitGlobalEventSuspend
 import com.huanchengfly.tieba.post.arch.onEvent
 import com.huanchengfly.tieba.post.arch.onGlobalEvent
 import com.huanchengfly.tieba.post.arch.pageViewModel
@@ -224,6 +227,7 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -726,6 +730,18 @@ fun ThreadPage(
     val lastVisibilityPostId by remember {
         derivedStateOf { lastVisibilityPost?.get { id } ?: 0L }
     }
+    // Debounce writes while scrolling; reuse the existing floor-jump path for resume.
+    LaunchedEffect(lastVisibilityPostId, curSortType, threadId) {
+        if (threadId != 0L && lastVisibilityPostId != 0L && !App.INSTANCE.appPreferences.incognitoMode) {
+            delay(800)
+            val markFloor = data.firstOrNull { it.post.get { id } == lastVisibilityPostId }?.post?.get { floor } ?: 0
+            if (markFloor > 0) ThreadReadMarks.put(threadId, ThreadReadMark(
+                postId = lastVisibilityPostId, floor = markFloor,
+                isDesc = curSortType == ThreadSortType.SORT_TYPE_DESC,
+                timestamp = System.currentTimeMillis()
+            ))
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -792,7 +808,28 @@ fun ThreadPage(
     }
     // 图片查看器「查看楼层」目标（issue #17）：未加载时经 Load(page=0, postId) 定位页加载
     var waitScrollToPostId by remember { mutableStateOf(0L) }
+    // 续看入口只在首屏加载后提供一次；指定楼层跳转/回复定位场景不打扰
+    var readMarkConsumed by remember { mutableStateOf(false) }
     viewModel.onEvent<ThreadUiEvent.LoadSuccess> {
+        if (!readMarkConsumed && postId == 0L && !context.appPreferences.incognitoMode && !waitLoadSuccessAndScrollToFirstReply && waitScrollToPostId == 0L && !scrollToReply) {
+            readMarkConsumed = true
+            val mark = ThreadReadMarks.get(threadId, curSortType == ThreadSortType.SORT_TYPE_DESC)
+            if (mark != null && mark.floor >= 2 && mark.isDesc == (curSortType == ThreadSortType.SORT_TYPE_DESC)) {
+                coroutineScope.launch {
+                    val result = scaffoldState.snackbarHostState.showSnackbar(
+                        message = context.getString(R.string.tip_read_resume, mark.floor),
+                        actionLabel = context.getString(R.string.button_read_resume),
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        // 复用「查看楼层」同款链路：已加载直接滚，未加载先定位页再滚
+                        emitGlobalEventSuspend(
+                            GlobalEvent.ScrollToPost(threadId = threadId, postId = mark.postId)
+                        )
+                    }
+                }
+            }
+        }
         if (waitScrollToPostId != 0L) {
             // 「查看楼层」按 postId 定位页加载完成：滚到目标楼层（issue #17）
             val targetPostId = waitScrollToPostId
@@ -2550,7 +2587,7 @@ fun PostCard(
                     BoxWithConstraints {
                     val isLightTheme = MaterialTheme.colors.isLight
                     val bodyColor = if (isLightTheme) Color(0xFF3C3C3C) else MaterialTheme.colors.onBackground
-                    val titleColor = if (isLightTheme) Color(0xFF111111) else Color(0xFFF5F5F5)
+                    val titleColor = if (isLightTheme) Color(0xFF111111) else ExtendedTheme.colors.text
                     // 除以 fontScale：抵消系统字体缩放，避免用户调大字体后每行字数变少
                     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(0.1f)
                     val bodyFontSize = (maxWidth.value / CharsPerLine / fontScale)

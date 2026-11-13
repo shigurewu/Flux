@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -63,6 +64,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.DockBottomMargin
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import com.huanchengfly.tieba.post.LocalDevicePosture
+import com.huanchengfly.tieba.post.LocalMainTabRequest
 import com.huanchengfly.tieba.post.LocalNotificationCountFlow
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.arch.BaseComposeActivity.Companion.LocalWindowSizeClass
@@ -70,6 +72,8 @@ import com.huanchengfly.tieba.post.arch.GlobalEvent
 import com.huanchengfly.tieba.post.arch.collectPartialAsState
 import com.huanchengfly.tieba.post.arch.emitGlobalEvent
 import com.huanchengfly.tieba.post.arch.pageViewModel
+import com.huanchengfly.tieba.post.dataStore
+import com.huanchengfly.tieba.post.collectPreferenceAsState
 import com.huanchengfly.tieba.post.rememberPreferenceAsState
 import com.huanchengfly.tieba.post.ui.common.anim.MotionTokens
 import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
@@ -98,7 +102,12 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.ui.page.chat.rememberImSessions
 import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+
+/** 底栏「消息」tab 的 id：外部入口（通知、快捷方式）按 id 定位，避免 hideExplore 造成的索引漂移。 */
+const val MAIN_TAB_ID_NOTIFICATION = "notification"
 
 @Composable
 private fun NavigationWrapper(
@@ -158,6 +167,9 @@ fun MainPage(
         initial = 0
     )
 
+    val privateMessageCount = rememberImSessions().sumOf { it.unreadCount }
+    val totalMessageCount = messageCount + privateMessageCount
+
     val notificationCountFlow = LocalNotificationCountFlow.current
     LaunchedEffect(null) {
         notificationCountFlow.collect {
@@ -169,7 +181,7 @@ fun MainPage(
         key = booleanPreferencesKey("hideExplore"),
         defaultValue = LocalContext.current.appPreferences.hideExplore
     )
-    val hideNotificationDot by rememberPreferenceAsState(
+    val hideNotificationDot by LocalContext.current.dataStore.collectPreferenceAsState(
         key = booleanPreferencesKey("hideNotificationDot"),
         defaultValue = false
     )
@@ -189,9 +201,11 @@ fun MainPage(
     val onChangePosition: (Int) -> Unit = { currentPosition = it }
 
     // 启动屏就绪兜底：起始页非首页时（动态/消息/我的），
-    // HomePage 不会组合、无法触发 markReady，此处补位避免启动屏只能等超时退场
-    LaunchedEffect(Unit) {
-        if (currentPosition != 0) {
+    // HomePage 不会组合、无法触发 markReady，此处补位避免启动屏只能等超时退场；
+    // 账号首轮加载（登录态冷启动改为后台读库）完成前不得退场，避免闪现未登录态
+    val accountsLoaded by AccountUtil.accountsLoaded.collectAsState()
+    LaunchedEffect(currentPosition != 0, accountsLoaded) {
+        if (currentPosition != 0 && accountsLoaded) {
             SplashState.markReady()
         }
     }
@@ -208,7 +222,7 @@ fun MainPage(
 
     val coroutineScope = rememberCoroutineScope()
     val themeColors = ExtendedTheme.colors
-    val navigationItems by remember {
+    val navigationItems by remember(privateMessageCount, account?.uid) {
         derivedStateOf {
             listOfNotNull(
                 NavigationItem(
@@ -244,13 +258,13 @@ fun MainPage(
                     }
                 ),
                 NavigationItem(
-                    id = "notification",
+                    id = MAIN_TAB_ID_NOTIFICATION,
                     icon = {
                         AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_animated_rounded_notifications)
                     },
                     title = { stringResource(id = R.string.title_notifications) },
-                    badge = messageCount > 0 && !hideNotificationDot,
-                    badgeText = "$messageCount",
+                    badge = totalMessageCount > 0 && !hideNotificationDot,
+                    badgeText = "$totalMessageCount",
                     onClick = {
                         viewModel.send(MainUiIntent.NewMessage.Clear)
                     },
@@ -271,6 +285,21 @@ fun MainPage(
             ).toImmutableList()
         }
     }
+
+    // 通知/快捷方式入口：按 tab id 切换底栏（冷启动时请求已在 StateFlow 中等待首次组合消费）
+    val mainTabRequest = LocalMainTabRequest.current
+    LaunchedEffect(mainTabRequest) {
+        mainTabRequest.tabId.collect { tabId ->
+            if (tabId != null) {
+                val index = navigationItems.indexOfFirst { it.id == tabId }
+                if (index >= 0) {
+                    currentPosition = index
+                }
+                mainTabRequest.consume()
+            }
+        }
+    }
+
     // hideExplore 变化或进程恢复时 currentPosition 可能短暂越界（如保存了 3 但列表已缩到 3 项），
     // 复位 LaunchedEffect 要到组合之后才跑；所有读取统一走安全夹取，避免绘制期越界闪退（issue #8）
     val safeCurrentPosition = currentPosition.coerceIn(0, navigationItems.lastIndex)

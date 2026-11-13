@@ -1616,6 +1616,7 @@ interface ITiebaApi {
         uid: Long,
         page: Int = 1,
         isThread: Boolean = true,
+        publicOnly: Boolean = false,
     ): Flow<UserPostResponse>
 
     fun userLikeForumFlow(

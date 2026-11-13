@@ -19,6 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.huanchengfly.tieba.post.arch.exhaustMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filterIsInstance
@@ -43,7 +44,7 @@ class HotViewModel @Inject constructor() :
         override fun toPartialChangeFlow(intentFlow: Flow<HotUiIntent>): Flow<HotPartialChange> =
             merge(
                 intentFlow.filterIsInstance<HotUiIntent.Load>()
-                    .flatMapConcat { produceLoadPartialChange() },
+                    .exhaustMap { produceLoadPartialChange() },
                 intentFlow.filterIsInstance<HotUiIntent.RefreshThreadList>()
                     .flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<HotUiIntent.Agree>()
@@ -108,13 +109,14 @@ sealed interface HotPartialChange : PartialChange<HotUiState> {
                 Start -> oldState.copy(isRefreshing = true)
                 is Success -> oldState.copy(
                     isRefreshing = false,
+                    refreshCompleted = oldState.refreshCompleted + 1,
                     currentTabCode = "all",
                     topicList = topicList.wrapImmutable(),
                     tabList = tabList.wrapImmutable(),
                     threadList = threadList.wrapImmutable()
                 )
 
-                is Failure -> oldState.copy(isRefreshing = false)
+                is Failure -> oldState.copy(isRefreshing = false, refreshCompleted = oldState.refreshCompleted + 1)
             }
 
         object Start : Load()
@@ -248,6 +250,7 @@ sealed interface HotPartialChange : PartialChange<HotUiState> {
 }
 
 data class HotUiState(
+    val refreshCompleted: Long = 0L,
     val isRefreshing: Boolean = true,
     val currentTabCode: String = "all",
     val isLoadingThreadList: Boolean = false,
