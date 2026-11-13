@@ -28,6 +28,15 @@ import com.huanchengfly.tieba.post.utils.DatabaseUtil
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.huanchengfly.tieba.post.api.TiebaApi
+import com.huanchengfly.tieba.post.ui.page.destinations.ConversationsPageDestination
+import com.huanchengfly.tieba.post.ui.widgets.compose.EmoticonText
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -61,54 +70,106 @@ import java.util.Locale
  * 私信会话列表（嵌入「消息」页 pager 的「私信」tab）。
  */
 @Composable
-fun ChatListPage() {
+fun ChatListPage(folded: Boolean = false) {
+    if (!com.huanchengfly.tieba.post.im.PrivateMessaging.enabled) return
     val navigator = LocalNavigator.current
-    val loggedIn = AccountUtil.LocalAccount.current != null
+    val uid = AccountUtil.LocalAccount.current?.uid.orEmpty()
+    val loggedIn = uid.isNotBlank()
     val sessions = rememberImSessions()
+    var retry by remember(uid) { mutableIntStateOf(0) }
+    var followFailed by remember(uid) { mutableStateOf(false) }
+    val following by produceState<Set<Long>?>(initialValue = null, uid, retry) {
+        value = null
+        followFailed = false
+        if (uid.isBlank()) return@produceState
+        try {
+            value = loadChatFollowIds(
+                isCurrentOwner = { AccountUtil.currentAccount?.uid == uid },
+                fetchPage = { TiebaApi.getInstance().followListFlow(it).first() },
+            )
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { followFailed = true }
+    }
+    val groups = remember(sessions, following, uid) {
+        following?.let { groupChatSessions(sessions, it, uid) }
+    }
+    val visibleSessions = if (folded) groups?.folded.orEmpty() else groups?.normal ?: sessions
 
-    if (sessions.isEmpty()) {
-        // 外层 Box 负责居中：EmptyState 内容块宽 0.9 屏宽，直接放进 pager 页会贴左
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 160.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            EmptyState(
-                title = stringResource(
-                    id = if (loggedIn) R.string.chat_empty_title else R.string.title_empty_login
-                ),
-                subtitle = stringResource(
-                    id = if (loggedIn) R.string.chat_empty_subtitle else R.string.chat_empty_login_subtitle
-                ),
-                illustration = EmptyIllustration.Hide,
-                modifier = Modifier.fillMaxWidth(),
-                actions = {
-                    if (!loggedIn) {
-                        Button(
-                            onClick = { navigator.navigate(LoginPageDestination) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(text = stringResource(id = R.string.button_login))
-                        }
-                    }
-                },
+    Column(Modifier.fillMaxSize()) {
+        if (loggedIn && following == null) {
+            Text(
+                text = if (!followFailed) "正在核对关注关系…"
+                    else if (folded) "关注关系加载失败，点此重试"
+                    else "关注关系加载失败，暂时显示全部消息，点此重试",
+                color = ExtendedTheme.colors.textSecondary, fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().clickable { retry++ }.padding(16.dp),
             )
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 16.dp),
-        ) {
-            items(sessions, key = { "${it.uid}-${it.peerUid}" }) { session ->
-                ChatSessionItem(session = session) {
-                    navigator.navigate(
-                        ChatPageDestination(
-                            peerUid = session.peerUid,
-                            peerName = session.peerName,
-                            peerPortrait = session.peerPortrait,
+        if (!folded && loggedIn) {
+            val strangers = groups?.folded
+            Row(
+                Modifier.fillMaxWidth().clickable {
+                    navigator.navigate(ConversationsPageDestination(folded = true))
+                }.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text("折叠消息", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ExtendedTheme.colors.text)
+                    Text(strangers?.let { "${it.size} 个陌生人会话" }
+                        ?: if (followFailed) "关系未确认，点击重试" else "正在核对关注关系，点击查看",
+                        fontSize = 12.sp, color = ExtendedTheme.colors.textSecondary)
+                }
+                val hideDot by LocalContext.current.dataStore.collectPreferenceAsState(booleanPreferencesKey("hideNotificationDot"), false)
+                val unread = strangers?.sumOf { it.unreadCount } ?: 0
+                Text(if (unread > 0 && !hideDot) "$unread 条未读 ›" else "›", color = ExtendedTheme.colors.primary)
+            }
+        }
+        if (visibleSessions.isEmpty()) {
+            // 外层 Box 负责居中：EmptyState 内容块宽 0.9 屏宽，直接放进 pager 页会贴左
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                EmptyState(
+                    title = if (folded && loggedIn && following == null) {
+                        if (followFailed) "关注关系加载失败" else "正在加载…"
+                    } else if (folded && loggedIn) "暂无折叠消息" else stringResource(
+                        id = if (loggedIn) R.string.chat_empty_title else R.string.title_empty_login
+                    ),
+                    subtitle = if (folded && loggedIn) "未关注用户的消息会收在这里" else stringResource(
+                        id = if (loggedIn) R.string.chat_empty_subtitle else R.string.chat_empty_login_subtitle
+                    ),
+                    illustration = EmptyIllustration.Hide,
+                    modifier = Modifier.fillMaxWidth(),
+                    actions = {
+                        if (!loggedIn) {
+                            Button(
+                                onClick = { navigator.navigate(LoginPageDestination) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = stringResource(id = R.string.button_login))
+                            }
+                        }
+                    },
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = PaddingValues(bottom = 16.dp),
+            ) {
+                items(visibleSessions, key = { "${it.uid}-${it.peerUid}" }) { session ->
+                    ChatSessionItem(session = session) {
+                        navigator.navigate(
+                            ChatPageDestination(
+                                peerUid = session.peerUid,
+                                peerName = session.peerName,
+                                peerPortrait = session.peerPortrait,
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -159,8 +220,9 @@ private fun ChatSessionItem(session: ImSession, onClick: () -> Unit) {
                     color = ExtendedTheme.colors.textSecondary,
                 )
             }
-            Text(
+            EmoticonText(
                 text = session.lastMsgPreview,
+                memeStickerSize = false,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

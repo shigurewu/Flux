@@ -5,7 +5,8 @@ import com.huanchengfly.tieba.post.models.database.ImSession
 
 /** Called only after a successful INSERT, inside the same Room transaction. */
 internal fun sessionAfterNewMessage(
-    previous: ImSession?, message: ImMessage, peerName: String = "", peerPortrait: String = ""
+    previous: ImSession?, message: ImMessage, peerName: String = "", peerPortrait: String = "",
+    countAsUnread: Boolean = true,
 ): ImSession {
     require(previous == null || (previous.uid == message.uid && previous.peerUid == message.peerUid))
     val session = previous ?: ImSession(uid = message.uid, peerUid = message.peerUid)
@@ -18,6 +19,6 @@ internal fun sessionAfterNewMessage(
         lastMsgTime = maxOf(session.lastMsgTime, message.createTime),
         lastMsgPreview = if (newest) message.content else session.lastMsgPreview,
         lastMsgFromMe = if (newest) message.isMine else session.lastMsgFromMe,
-        unreadCount = session.unreadCount + if (message.isMine) 0 else 1,
+        unreadCount = session.unreadCount + if (message.isMine || !countAsUnread) 0 else 1,
     )
 }

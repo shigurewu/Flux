@@ -7,6 +7,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.github.panpf.sketch.compose.AsyncImage
 import com.github.panpf.sketch.fetch.newFileUri
@@ -269,13 +271,13 @@ object EmoticonManager {
         }
 
     fun getEmoticonInlineContent(
-        sizePx: Float
+        size: TextUnit
     ): Map<String, InlineTextContent> {
         return emoticonIds.associate { id ->
             "Emoticon#$id" to InlineTextContent(
                 placeholder = Placeholder(
-                    sizePx.pxToSp().sp,
-                    sizePx.pxToSp().sp,
+                    size,
+                    size,
                     PlaceholderVerticalAlign.TextCenter
                 ),
                 children = {
@@ -285,7 +287,7 @@ object EmoticonManager {
                             id = R.string.emoticon,
                             getEmoticonNameById(id) ?: ""
                         ),
-                        modifier = Modifier.size(sizePx.pxToDp().dp)
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             )

@@ -1,6 +1,18 @@
 package com.huanchengfly.tieba.post.ui.page.chat
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.rounded.SentimentSatisfied
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import com.huanchengfly.tieba.post.ui.page.reply.ClassicEmoticonGrid
+import com.huanchengfly.tieba.post.ui.widgets.compose.EmoticonText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +35,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -97,7 +110,7 @@ fun ChatPage(
     LaunchedEffect(chatViewModel, peerUid, uid) {
         chatViewModel.send(ChatUiIntent.Load(peerUid))
     }
-    LaunchedEffect(uiState.messages.size) {
+    LaunchedEffect(uid, peerUid, uiState.messages.lastOrNull { it.msgId > 0 }?.msgId) {
         if (uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.lastIndex)
         }
@@ -154,6 +167,24 @@ fun ChatPage(
                 .padding(paddingValues)
                 .imePadding(),
         ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    enabled = uid.isNotBlank() && !uiState.syncingHistory && uiState.historyHasMore,
+                    onClick = { chatViewModel.send(ChatUiIntent.SyncHistory(peerUid, displayName, displayPortrait)) },
+                ) {
+                    Text(when {
+                        uiState.syncingHistory -> "正在同步…"
+                        !uiState.historyHasMore -> "暂无更多历史"
+                        uiState.historyStarted -> "继续同步更早消息"
+                        else -> "同步历史消息（尝试）"
+                    }, fontSize = 12.sp)
+                }
+            }
+            if (uiState.historyFeedback.isNotEmpty()) {
+                Text(uiState.historyFeedback, color = ExtendedTheme.colors.textSecondary,
+                    fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
             if (status != ImStatus.Ready || uid.isBlank()) {
                 Text(
                     text = when {
@@ -167,7 +198,7 @@ fun ChatPage(
                 )
             }
             if (uiState.messages.isEmpty()) {
-                Text("仅支持文本私信；历史消息暂不回填", color = ExtendedTheme.colors.textSecondary,
+                Text("暂无消息，试试发送文字或表情", color = ExtendedTheme.colors.textSecondary,
                     fontSize = 12.sp, modifier = Modifier.padding(16.dp))
             }
             LazyColumn(
@@ -188,6 +219,7 @@ fun ChatPage(
             }
             ChatInputBar(
                 value = input,
+                draftKey = "$uid:$peerUid",
                 onValueChange = { input = it },
                 enabled = !uiState.sending,
                 canSend = status == ImStatus.Ready && uid.isNotBlank(),
@@ -220,10 +252,11 @@ private fun ChatMessageItem(message: ImMessage, peerName: String, peerPortrait: 
                     .clip(CircleShape),
             )
         }
-        Text(
+        EmoticonText(
             text = message.content,
             fontSize = 15.sp,
             lineHeight = 21.sp,
+            memeStickerSize = false,
             modifier = Modifier
                 .widthIn(max = 260.dp)
                 .clip(
@@ -244,57 +277,92 @@ private fun ChatMessageItem(message: ImMessage, peerName: String, peerPortrait: 
 @Composable
 private fun ChatInputBar(
     value: String,
+    draftKey: String,
     onValueChange: (String) -> Unit,
     enabled: Boolean,
     canSend: Boolean,
     onSend: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        BasicTextField(
-            value = value,
-            enabled = enabled,
-            onValueChange = onValueChange,
+    var showEmoticons by remember(draftKey) { mutableStateOf(false) }
+    var fieldValue by remember(draftKey) { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusRequester = remember(draftKey) { FocusRequester() }
+    LaunchedEffect(value, draftKey) {
+        if (fieldValue.text != value) fieldValue = TextFieldValue(value, TextRange(value.length))
+    }
+    BackHandler(showEmoticons) { showEmoticons = false }
+    Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(20.dp))
-                .background(ExtendedTheme.colors.chip)
-                .padding(horizontal = 14.dp, vertical = 9.dp),
-            textStyle = TextStyle(
-                fontSize = 15.sp,
-                color = ExtendedTheme.colors.text,
-            ),
-            cursorBrush = SolidColor(ExtendedTheme.colors.primary),
-            maxLines = 4,
-            decorationBox = { innerTextField ->
-                Box {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = stringResource(id = R.string.chat_input_hint),
-                            fontSize = 15.sp,
-                            color = ExtendedTheme.colors.textSecondary,
-                        )
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BasicTextField(
+                value = fieldValue,
+                enabled = enabled,
+                onValueChange = { fieldValue = it; onValueChange(it.text) },
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { if (it.isFocused) showEmoticons = false }
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(ExtendedTheme.colors.chip)
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                textStyle = TextStyle(
+                    fontSize = 15.sp,
+                    color = ExtendedTheme.colors.text,
+                ),
+                cursorBrush = SolidColor(ExtendedTheme.colors.primary),
+                maxLines = 4,
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = stringResource(id = R.string.chat_input_hint),
+                                fontSize = 15.sp,
+                                color = ExtendedTheme.colors.textSecondary,
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
-                }
-            },
-        )
-        IconButton(onClick = onSend, enabled = enabled && canSend && value.isNotBlank()) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.Send,
-                contentDescription = stringResource(id = R.string.chat_btn_send_desc),
-                tint = if (value.isBlank()) {
-                    ExtendedTheme.colors.textDisabled
-                } else {
-                    ExtendedTheme.colors.primary
                 },
             )
+            IconButton(enabled = enabled, onClick = {
+                if (showEmoticons) {
+                    showEmoticons = false
+                    focusRequester.requestFocus()
+                    keyboard?.show()
+                } else {
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                    showEmoticons = true
+                }
+            }) {
+                Icon(Icons.Rounded.SentimentSatisfied, contentDescription = "选择表情", tint = ExtendedTheme.colors.primary)
+            }
+            IconButton(onClick = onSend, enabled = enabled && canSend && value.isNotBlank()) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = stringResource(id = R.string.chat_btn_send_desc),
+                    tint = if (value.isBlank()) {
+                        ExtendedTheme.colors.textDisabled
+                    } else {
+                        ExtendedTheme.colors.primary
+                    },
+                )
+            }
+        }
+        if (showEmoticons && enabled) {
+            Box(Modifier.fillMaxWidth().heightIn(max = 220.dp).padding(horizontal = 8.dp)) {
+                ClassicEmoticonGrid { emoticon ->
+                    val draft = insertChatEmoticon(fieldValue.text, fieldValue.selection.start, fieldValue.selection.end, emoticon.name)
+                    fieldValue = TextFieldValue(draft.text, TextRange(draft.cursor))
+                    onValueChange(draft.text)
+                }
+            }
         }
     }
 }

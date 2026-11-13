@@ -151,17 +151,31 @@ object DatabaseUtil {
     suspend fun insertImMessages(messages: List<ImMessage>): List<Long> =
         appDatabase.imMessageDao().insertAll(messages)
 
+    /** Only seed a missing session; an existing live preview and unread state are untouched. */
+    suspend fun importImHistory(uid: String, peerUid: Long, messages: List<ImMessage>, name: String, portrait: String): Int =
+        appDatabase.withTransaction {
+            require(messages.all { it.uid == uid && it.peerUid == peerUid && it.groupId == -1L && it.msgId < 0 })
+            val inserted = appDatabase.imMessageDao().insertAll(messages).count { it != -1L }
+            if (messages.isNotEmpty() && appDatabase.imSessionDao().getByPeerUid(uid, peerUid) == null) {
+                val latest = messages.maxWith(compareBy<ImMessage> { it.createTime }.thenBy { it.msgId })
+                appDatabase.imSessionDao().insert(ImSession(uid = uid, peerUid = peerUid,
+                    peerName = name, peerPortrait = portrait, lastMsgTime = latest.createTime,
+                    lastMsgPreview = latest.content, lastMsgFromMe = latest.isMine))
+            }
+            inserted
+        }
+
     suspend fun getLatestImMessage(uid: String, peerUid: Long): ImMessage? =
         appDatabase.imMessageDao().getLatestByPeer(uid, peerUid)
 
     /** Message insertion and unread count are atomic; replayed messages have no effect. */
-    suspend fun storeImMessage(message: ImMessage, peerName: String = "", peerPortrait: String = "") =
+    suspend fun storeImMessage(message: ImMessage, peerName: String = "", peerPortrait: String = "", countAsUnread: Boolean = true) =
         appDatabase.withTransaction {
             val inserted = appDatabase.imMessageDao().insertAll(listOf(message)).first() != -1L
             if (inserted) {
                 val dao = appDatabase.imSessionDao()
                 val old = dao.getByPeerUid(message.uid, message.peerUid)
-                val updated = sessionAfterNewMessage(old, message, peerName, peerPortrait)
+                val updated = sessionAfterNewMessage(old, message, peerName, peerPortrait, countAsUnread)
                 if (old == null) dao.insert(updated) else dao.update(updated)
             }
         }

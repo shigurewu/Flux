@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -127,7 +128,7 @@ fun EmoticonText(
     softWrap: Boolean = true,
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
-    emoticonSize: Float = 0.9f,
+    emoticonSize: Float = 1f,
     memeStickerSize: Boolean = true,
     inlineContent: Map<String, InlineTextContent> = emptyMap(),
     onTextLayout: (TextLayoutResult) -> Unit = {},
@@ -152,17 +153,19 @@ fun EmoticonText(
         )
     )
     val sizePx = calcLineHeightPx(mergedStyle)
+    val emoticonFontSize = (mergedStyle.fontSize.takeIf { it.isSp } ?: 14.sp) * emoticonSize
+    val emoticonPx = with(LocalDensity.current) { emoticonFontSize.toPx() }
     val spacingLineHeight =
         remember(sizePx) { (sizePx + lineSpacing.value.spToPxFloat()).pxToSpFloat().sp }
     val emoticonInlineContent =
-        remember(sizePx) { EmoticonManager.getEmoticonInlineContent(sizePx * emoticonSize) }
+        remember(emoticonFontSize) { EmoticonManager.getEmoticonInlineContent(emoticonFontSize) }
     val emoticonText = remember(text) { text.emoticonString }
     val memeInlineContent = remember(
-        emoticonText, sizePx, EmoticonManager.memeVersion, memeStickerSize
+        emoticonText, emoticonPx, EmoticonManager.memeVersion, memeStickerSize
     ) {
         EmoticonManager.buildMemeInlineContent(
             emoticonText,
-            sizePx * emoticonSize,
+            emoticonPx,
             memeStickerSize
         )
     }
@@ -433,7 +436,7 @@ fun HighlightText(
     softWrap: Boolean = true,
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
-    emoticonSize: Float = 0.9f,
+    emoticonSize: Float = 1f,
     memeStickerSize: Boolean = false,
     onTextLayout: (TextLayoutResult) -> Unit = {},
     style: TextStyle = LocalTextStyle.current,
@@ -486,7 +489,7 @@ fun HighlightText(
     softWrap: Boolean = true,
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
-    emoticonSize: Float = 0.9f,
+    emoticonSize: Float = 1f,
     memeStickerSize: Boolean = false,
     inlineContent: Map<String, InlineTextContent> = emptyMap(),
     onTextLayout: (TextLayoutResult) -> Unit = {},

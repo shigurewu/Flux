@@ -40,9 +40,11 @@ sealed interface ImConnectionState {
  */
 class ImConnection(
     private val externalScope: CoroutineScope,
+    private val endpoint: String = ImConstants.WS_URL,
 ) {
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .addInterceptor(ImWebSocketHandshake)
             .pingInterval(ImConstants.PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -105,8 +107,7 @@ class ImConnection(
         _state.value = ImConnectionState.Connecting
         sessionEnd = CompletableDeferred()
         val request = Request.Builder()
-            .url(ImConstants.WS_URL)
-            .header("Sec-WebSocket-Extensions", ImConstants.HEADER_IM_VERSION)
+            .url(endpoint)
             .header("Accept-Encoding", "gzip")
             .build()
 

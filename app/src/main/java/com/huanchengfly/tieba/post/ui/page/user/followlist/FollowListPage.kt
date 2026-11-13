@@ -73,17 +73,15 @@ private enum class FollowListFilter { All, Mutual }
 @Composable
 fun FollowListPage(
     uid: Long = 0,
+    fans: Boolean = false,
     navigator: DestinationsNavigator,
-    viewModel: FollowListViewModel = pageViewModel(),
+    viewModel: FollowListViewModel = pageViewModel(key = "relationships_${uid}_${fans}_${AccountUtil.LocalAccount.current?.uid}"),
 ) {
-    val showActions = (uid == 0L || uid == AccountUtil.LocalAccount.current?.uid?.toLong())
+    val targetUid = uid.takeIf { it > 0 } ?: AccountUtil.LocalAccount.current?.uid?.toLongOrNull()
+    val showActions = !fans && (uid == 0L || uid == AccountUtil.LocalAccount.current?.uid?.toLongOrNull())
 
     fun refresh() {
-        if (showActions) {
-            viewModel.send(FollowListUiIntent.Refresh())
-        } else {
-            viewModel.send(FollowListUiIntent.Refresh(uid))
-        }
+        viewModel.send(FollowListUiIntent.Refresh(if (showActions) null else targetUid, fans))
     }
 
     LazyLoad(loaded = viewModel.initialized) {
@@ -113,6 +111,9 @@ fun FollowListPage(
     val totalFollowNum by viewModel.uiState.collectPartialAsState(
         prop1 = FollowListUiState::totalFollowNum,
         initial = 0
+    )
+    val hasLoaded by viewModel.uiState.collectPartialAsState(
+        prop1 = FollowListUiState::hasLoaded, initial = false,
     )
     val tipsText by viewModel.uiState.collectPartialAsState(
         prop1 = FollowListUiState::tipsText,
@@ -148,7 +149,7 @@ fun FollowListPage(
             TitleCentredToolbar(
                 title = {
                     Text(
-                        text = stringResource(id = R.string.title_follow_list),
+                        text = stringResource(id = if (fans) R.string.title_fans_list else R.string.title_follow_list),
                         style = MaterialTheme.typography.h6,
                         fontWeight = FontWeight.Bold
                     )
@@ -170,6 +171,9 @@ fun FollowListPage(
                 totalFollowNum = totalFollowNum,
                 tipsText = tipsText,
                 showFilter = showActions,
+                fans = fans,
+                countKnown = !fans || hasLoaded,
+                failed = error != null,
             )
             Box(
                 modifier = Modifier
@@ -182,7 +186,16 @@ fun FollowListPage(
                     isError = isError,
                     isLoading = isRefreshing,
                     onReload = ::refresh,
-                    errorScreen = { ErrorScreen(error = error.getOrNull()) },
+                    errorScreen = {
+                        ErrorScreen(error = error.getOrNull(), actions = {
+                            if (fans) Text(
+                                text = fansErrorDetail(error.getOrNull()),
+                                color = ExtendedTheme.colors.textSecondary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 12.dp),
+                            )
+                        })
+                    },
                 ) {
                     val pullRefreshState = rememberPullRefreshState(
                         refreshing = isRefreshing,
@@ -198,11 +211,7 @@ fun FollowListPage(
                             isLoading = isLoadingMore,
                             onLoadMore = {
                                 if (hasMore) {
-                                    if (showActions) {
-                                        viewModel.send(FollowListUiIntent.LoadMore(currentPage))
-                                    } else {
-                                        viewModel.send(FollowListUiIntent.LoadMore(currentPage, uid))
-                                    }
+                                    viewModel.send(FollowListUiIntent.LoadMore(currentPage, if (showActions) null else targetUid, fans))
                                 }
                             },
                             loadEnd = !hasMore,
@@ -266,6 +275,9 @@ private fun FollowListHeader(
     totalFollowNum: Int,
     tipsText: String?,
     showFilter: Boolean = true,
+    fans: Boolean = false,
+    countKnown: Boolean = true,
+    failed: Boolean = false,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -277,7 +289,8 @@ private fun FollowListHeader(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = stringResource(id = R.string.text_follow_list_count, totalFollowNum),
+                text = if (countKnown) stringResource(id = if (fans) R.string.text_fans_list_count else R.string.text_follow_list_count, totalFollowNum)
+                    else if (failed) "粉丝列表未加载" else "正在加载粉丝…",
                 style = MaterialTheme.typography.body2,
                 color = ExtendedTheme.colors.textSecondary
             )

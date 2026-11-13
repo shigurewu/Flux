@@ -89,7 +89,8 @@ fun NotificationsHubPage() {
     val uid = LocalAccount.current?.uid.orEmpty()
     val scope = rememberCoroutineScope()
     val sessions = rememberImSessions()
-    val imStatus by ImManager.imStatus.collectAsState()
+    val imStatus = if (com.huanchengfly.tieba.post.im.PrivateMessaging.enabled)
+        ImManager.imStatus.collectAsState().value else ImStatus.Idle
     val hideDot by LocalContext.current.dataStore.collectPreferenceAsState(booleanPreferencesKey("hideNotificationDot"), false)
     var entries by remember(uid) { mutableStateOf(HubCache.entries[uid] ?: emptyHubEntries()) }
     var loading by remember(uid) { mutableStateOf(false) }
@@ -174,7 +175,7 @@ fun NotificationsHubPage() {
                 HubRow(Icons.AutoMirrored.Rounded.Chat, stringResource(R.string.title_chat), preview,
                     !hideDot && sessions.any { it.unreadCount > 0 }) {
                     if (uid.isBlank()) navigator.navigate(LoginPageDestination)
-                    else navigator.navigate(ConversationsPageDestination)
+                    else navigator.navigate(ConversationsPageDestination())
                 }
             }
             if (loadError) item {

@@ -75,7 +75,7 @@ class FollowListViewModel @Inject constructor() :
             )
 
         private fun FollowListUiIntent.Refresh.toRefreshPartialChangeFlow(): Flow<FollowListPartialChange.Refresh> =
-            TiebaApi.getInstance().followListFlow(uid = uid)
+            relationshipList(page = 1, uid = uid, fans = fans)
                 .map<FollowListBean, FollowListPartialChange.Refresh> {
                     FollowListPartialChange.Refresh.Success(
                         page = 1,
@@ -89,16 +89,24 @@ class FollowListViewModel @Inject constructor() :
                 .catch { emit(FollowListPartialChange.Refresh.Failure(it)) }
 
         private fun FollowListUiIntent.LoadMore.toLoadMorePartialChangeFlow(): Flow<FollowListPartialChange.LoadMore> =
-            TiebaApi.getInstance().followListFlow(page + 1, uid)
+            relationshipList(page = page + 1, uid = uid, fans = fans)
                 .map<FollowListBean, FollowListPartialChange.LoadMore> {
                     FollowListPartialChange.LoadMore.Success(
-                        page = it.pageNum,
+                        page = page + 1,
                         hasMore = it.hasMore == 1,
                         users = it.followList,
                     )
                 }
                 .onStart { emit(FollowListPartialChange.LoadMore.Start) }
                 .catch { emit(FollowListPartialChange.LoadMore.Failure(it)) }
+
+        private fun relationshipList(page: Int, uid: Long?, fans: Boolean): Flow<FollowListBean> =
+            kotlinx.coroutines.flow.flow {
+                val api = TiebaApi.getInstance()
+                val result = if (fans) api.fansListFlow(page, requireNotNull(uid))
+                    else api.followListFlow(page, uid)
+                result.collect { emit(it) }
+            }
 
         private fun FollowListUiIntent.Unfollow.toUnfollowPartialChangeFlow(): Flow<FollowListPartialChange.Unfollow> =
             TiebaApi.getInstance().unfollowFlow(portrait, tbs)
@@ -119,8 +127,8 @@ class FollowListViewModel @Inject constructor() :
 }
 
 sealed interface FollowListUiIntent : UiIntent {
-    data class Refresh(val uid: Long? = null) : FollowListUiIntent
-    data class LoadMore(val page: Int, val uid: Long? = null) : FollowListUiIntent
+    data class Refresh(val uid: Long? = null, val fans: Boolean = false) : FollowListUiIntent
+    data class LoadMore(val page: Int, val uid: Long? = null, val fans: Boolean = false) : FollowListUiIntent
     data class Unfollow(
         val userId: Long,
         val portrait: String,
@@ -140,6 +148,7 @@ sealed interface FollowListPartialChange : PartialChange<FollowListUiState> {
 
             is Success -> oldState.copy(
                 isRefreshing = false,
+                hasLoaded = true,
                 error = null,
                 currentPage = page,
                 hasMore = hasMore,
@@ -236,6 +245,7 @@ sealed interface FollowListPartialChange : PartialChange<FollowListUiState> {
 
 @Immutable
 data class FollowListUiState(
+    val hasLoaded: Boolean = false,
     val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val error: ImmutableHolder<Throwable>? = null,

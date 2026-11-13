@@ -82,9 +82,13 @@ object ImApi {
     }
 
     /** 解析鉴权响应，返回消息组列表（错误时抛 [ImException]） */
-    fun parseUpdateClientInfo(body: ByteArray): List<ImGroupInfo> {
+    fun parseUpdateClientInfo(body: ByteArray, expectedUserId: Long): List<ImGroupInfo> {
         val res = UpdateClientInfoResIdl.ADAPTER.decode(body)
         checkError(res.error)
+        val userId = res.data_?.userInfo?.userId ?: 0L
+        if (userId <= 0L || userId != expectedUserId || res.data_?.isUserAvailable != userId) {
+            throw IOException("私信登录态未通过校验，请重新登录后重试")
+        }
         return res.data_?.groupInfo.orEmpty().map {
             ImGroupInfo(groupId = it.groupId, groupType = it.groupType, lastMsgId = it.lastMsgId)
         }
@@ -147,7 +151,8 @@ object ImApi {
         if (blockInfo != null && blockInfo.blockErrno != 0) {
             throw ImException(blockInfo.blockErrno.toLong(), blockInfo.blockErrmsg.ifEmpty { "消息发送被屏蔽" })
         }
-        return res.data_?.msgId ?: 0L
+        return res.data_?.msgId?.takeIf { it > 0L }
+            ?: throw IOException("服务器未确认消息发送成功，请稍后检查会话")
     }
 
     // ── CMD 205006 标记已读 ───────────────────────────────────────

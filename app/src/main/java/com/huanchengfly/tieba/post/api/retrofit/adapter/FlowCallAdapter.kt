@@ -6,8 +6,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import retrofit2.Call
 import retrofit2.CallAdapter
 import retrofit2.Callback
+import retrofit2.HttpException
 import retrofit2.Response
 import java.lang.reflect.Type
+import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -49,7 +51,9 @@ class BodyCallAdapter<T>(private val responseType: Type) : CallAdapter<T, Flow<T
 
                         override fun onResponse(call: Call<T>, response: Response<T>) {
                             try {
-                                continuation.resume(response.body()!!)
+                                if (!response.isSuccessful) throw HttpException(response)
+                                val body = response.body() ?: throw IOException("服务器返回了空响应（HTTP ${response.code()}）")
+                                continuation.resume(body)
                             } catch (e: Exception) {
                                 continuation.resumeWithException(e)
                             }

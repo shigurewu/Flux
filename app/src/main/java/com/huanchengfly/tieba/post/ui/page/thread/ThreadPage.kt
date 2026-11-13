@@ -2807,7 +2807,7 @@ private fun SubPostItem(
                     text = subPostContent,
                     modifier = modifier,
                     fontSize = 13.sp,
-                    emoticonSize = 0.9f,
+                    emoticonSize = 1f,
                     overflow = TextOverflow.Ellipsis,
                     maxLines = 4,
                     lineSpacing = 0.4.sp,

@@ -177,6 +177,8 @@
     <string name="button_follow">关注</string>
     <string name="button_unfollow">取消关注</string>
     <string name="title_follow_list">全部关注</string>
+    <string name="title_fans_list">粉丝</string>
+    <string name="text_fans_list_count">共%1$d位粉丝</string>
     <string name="text_follow_list_count">共关注%1$d个吧友</string>
     <string name="filter_follow_all">我的关注</string>
     <string name="filter_follow_mutual">互相关注</string>

@@ -146,6 +146,7 @@ import com.huanchengfly.tieba.post.utils.ImageUtil
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -687,6 +688,9 @@ object MixedTiebaApiImpl : ITiebaApi {
 
     override fun followListFlow(page: Int, uid: Long?): Flow<FollowListBean> =
         RetrofitTiebaApi.OFFICIAL_TIEBA_API.followListFlow(page, uid)
+
+    override fun fansListFlow(page: Int, uid: Long): Flow<FollowListBean> =
+        RetrofitTiebaApi.OFFICIAL_TIEBA_API.fansListFlow(page, uid).map { it.toFollowListBean() }
 
     override fun getAllFollowFlow(uid: Long?): Flow<FollowListBean> = flow {
         var currentPage = 1

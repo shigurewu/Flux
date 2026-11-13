@@ -142,6 +142,7 @@ import kotlin.math.min
 @Composable
 fun UserProfilePage(
     uid: Long,
+    initialTab: String = "threads",
     navigator: DestinationsNavigator,
     viewModel: UserProfileViewModel = pageViewModel(),
 ) {
@@ -207,6 +208,7 @@ fun UserProfilePage(
             user?.let {
                 UserProfileContent(
                     user = it,
+                    initialTab = initialTab,
                     showActionBtn = account != null,
                     disableButton = disableButton,
                     isSelf = isSelf,
@@ -336,6 +338,7 @@ fun PermissionSettingDialogM2(
 @Composable
 private fun UserProfileContent(
     user: ImmutableHolder<User>,
+    initialTab: String,
     showActionBtn: Boolean,
     disableButton: Boolean,
     isSelf: Boolean,
@@ -348,6 +351,7 @@ private fun UserProfileContent(
         WindowWidthSizeClass.Expanded -> {
             UserProfileContentExpanded(
                 user = user,
+                initialTab = initialTab,
                 showActionBtn = showActionBtn,
                 disableButton = disableButton,
                 isSelf = isSelf,
@@ -361,6 +365,7 @@ private fun UserProfileContent(
         else -> {
             UserProfileContentNormal(
                 user = user,
+                initialTab = initialTab,
                 showActionBtn = showActionBtn,
                 disableButton = disableButton,
                 isSelf = isSelf,
@@ -476,6 +481,7 @@ private fun UserProfileToolbar(
 @Composable
 private fun UserProfileContentNormal(
     user: ImmutableHolder<User>,
+    initialTab: String,
     showActionBtn: Boolean,
     disableButton: Boolean,
     isSelf: Boolean,
@@ -631,7 +637,9 @@ private fun UserProfileContentNormal(
                             ),
                         ).toImmutableList()
                     }
-                    val pagerState = rememberPagerState { pages.size }
+                    val pagerState = rememberPagerState(
+                        initialPage = pages.indexOfFirst { it.id == initialTab }.coerceAtLeast(0),
+                    ) { pages.size }
 
                     val containerHeight by remember {
                         derivedStateOf {
@@ -709,6 +717,7 @@ private fun UserProfileContentNormal(
 @Composable
 private fun UserProfileContentExpanded(
     user: ImmutableHolder<User>,
+    initialTab: String,
     showActionBtn: Boolean,
     disableButton: Boolean,
     isSelf: Boolean,
@@ -803,7 +812,9 @@ private fun UserProfileContentExpanded(
                             ),
                         ).toImmutableList()
                     }
-                    val pagerState = rememberPagerState { pages.size }
+                    val pagerState = rememberPagerState(
+                        initialPage = pages.indexOfFirst { it.id == initialTab }.coerceAtLeast(0),
+                    ) { pages.size }
 
                     UserProfileDetail(
                         user = user,
@@ -1068,7 +1079,10 @@ private fun UserProfileDetail(
                 HorizontalDivider(modifier = Modifier.fillMaxHeight())
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.clickable {
+                        navigator.navigate(FollowListPageDestination(uid = user.get { id }, fans = true))
+                    },
                 ) {
                     Text(
                         text = stringResource(id = R.string.text_stat_fans),

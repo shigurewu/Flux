@@ -159,6 +159,15 @@ interface OfficialTiebaApi {
         @Field("uid") uid: Long? = null,
     ): Flow<FollowListBean>
 
+    @Headers("${Header.FORCE_LOGIN}: ${Header.FORCE_LOGIN_TRUE}")
+    @POST("https://tiebac.baidu.com/c/u/fans/page")
+    @FormUrlEncoded
+    fun fansListFlow(
+        @Field("pn") page: Int,
+        @Field("uid") uid: Long,
+        @Field("_client_version") clientVersion: String = ClientVersion.TIEBA_V22.version,
+    ): Flow<com.huanchengfly.tieba.post.api.models.FansListBean>
+
     @Headers(
         "${Header.FORCE_LOGIN}: ${Header.FORCE_LOGIN_TRUE}",
         "${Header.NO_COMMON_PARAMS}: BDUSS"

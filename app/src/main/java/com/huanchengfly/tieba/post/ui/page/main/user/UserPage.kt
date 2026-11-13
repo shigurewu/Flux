@@ -107,7 +107,9 @@ private fun StatCardPlaceholder(modifier: Modifier = Modifier) {
 private fun StatCard(
     account: Account,
     modifier: Modifier = Modifier,
-    onFollowClick: (() -> Unit)? = null
+    onFollowClick: (() -> Unit)? = null,
+    onFansClick: (() -> Unit)? = null,
+    onPostsClick: (() -> Unit)? = null,
 ) {
     val postNum by animateIntAsState(targetValue = account.postNum?.toIntOrNull() ?: 0)
     val fansNum by animateIntAsState(targetValue = account.fansNum?.toIntOrNull() ?: 0)
@@ -128,12 +130,14 @@ private fun StatCard(
         HorizontalDivider(color = ExtendedTheme.colors.divider)
         StatCardItem(
             statNum = fansNum,
-            statText = stringResource(id = R.string.text_stat_fans)
+            statText = stringResource(id = R.string.text_stat_fans),
+            modifier = if (onFansClick != null) Modifier.clickable(onClick = onFansClick) else Modifier,
         )
         HorizontalDivider(color = ExtendedTheme.colors.divider)
         StatCardItem(
             statNum = postNum,
-            statText = stringResource(id = R.string.title_stat_posts_num)
+            statText = stringResource(id = R.string.title_stat_posts_num),
+            modifier = if (onPostsClick != null) Modifier.clickable(onClick = onPostsClick) else Modifier,
         )
     }
 }
@@ -332,8 +336,14 @@ fun UserPage(
                             .background(color = ExtendedTheme.colors.card)
                             .padding(vertical = 18.dp),
                         onFollowClick = {
-                            navigator.navigate(FollowListPageDestination())
-                        }
+                            navigator.navigate(FollowListPageDestination(uid = account!!.uid.toLong()))
+                        },
+                        onFansClick = {
+                            navigator.navigate(FollowListPageDestination(uid = account!!.uid.toLong(), fans = true))
+                        },
+                        onPostsClick = {
+                            navigator.navigate(UserProfilePageDestination(uid = account!!.uid.toLong(), initialTab = "posts"))
+                        },
                     )
                 } else if (isLoading) {
                     Row(

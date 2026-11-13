@@ -1015,7 +1015,7 @@ private fun EmoticonPanel(
 }
 
 @Composable
-private fun ClassicEmoticonGrid(
+internal fun ClassicEmoticonGrid(
     onEmoticonClick: (Emoticon) -> Unit,
 ) {
     // mappingRevision 为 key：服务端覆盖同名表情 id 时（issue #36），格子列表立即重组，

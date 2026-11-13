@@ -1,6 +1,6 @@
 package com.huanchengfly.tieba.post.im
 
-/** Keep protocol/storage code for a future upstream update, but expose no entry or connection. */
+/** Private messaging stays disabled in 1.3.19; retain implementation for future work. */
 object PrivateMessaging {
     const val enabled = false
 }

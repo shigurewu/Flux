@@ -927,6 +927,8 @@ interface ITiebaApi {
         uid: Long? = null,
     ): Flow<FollowListBean>
 
+    fun fansListFlow(page: Int = 1, uid: Long): Flow<FollowListBean>
+
     /**
      * 获取用户所有关注（客户端接口，自动翻页聚合）
      *

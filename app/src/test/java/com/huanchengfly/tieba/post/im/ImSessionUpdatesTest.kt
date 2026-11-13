@@ -6,6 +6,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ImSessionUpdatesTest {
+    @Test fun backfilledMessagesAppearWithoutFabricatingUnread() {
+        val incoming = ImMessage(uid = "account-a", peerUid = 99, msgId = 10, createTime = 10,
+            content = "old stranger", isMine = false)
+        val session = sessionAfterNewMessage(null, incoming, "陌生人", countAsUnread = false)
+        assertEquals(99L, session.peerUid)
+        assertEquals("old stranger", session.lastMsgPreview)
+        assertEquals(0, session.unreadCount)
+        val live = sessionAfterNewMessage(session, incoming.copy(msgId = 11, createTime = 11))
+        assertEquals(1, live.unreadCount)
+    }
+    @Test fun oldBackfillDoesNotClearExistingUnreadOrReplaceNewerPreview() {
+        val current = ImSession(uid = "account-a", peerUid = 42, lastMsgId = 20,
+            lastMsgTime = 20, lastMsgPreview = "new", unreadCount = 3)
+        val old = ImMessage(uid = "account-a", peerUid = 42, msgId = 10, createTime = 10, content = "old")
+        val result = sessionAfterNewMessage(current, old, countAsUnread = false)
+        assertEquals(3, result.unreadCount)
+        assertEquals("new", result.lastMsgPreview)
+    }
     private fun message(id: Long, time: Long = id, mine: Boolean = false) = ImMessage(
         uid = "account-a", peerUid = 42, msgId = id, createTime = time,
         content = "message-$id", isMine = mine
