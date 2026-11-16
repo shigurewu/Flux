@@ -58,11 +58,16 @@ class OKSignService : IntentService(TAG), CoroutineScope, ProgressListener {
         Log.i(TAG, "onHandleWork")
         if (intent?.action == ACTION_START_SIGN) {
             val loginInfo = AccountUtil.getLoginInfo()
+            val expectedAccountUid = intent.getStringExtra(EXTRA_EXPECTED_ACCOUNT_UID)
+            if (expectedAccountUid != null && loginInfo?.uid != expectedAccountUid) {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                return
+            }
             if (loginInfo != null) {
                 runBlocking {
                     SingleAccountSigner(
                         this@OKSignService,
-                        AccountUtil.getLoginInfo()!!
+                        loginInfo
                     )
                         .apply {
                             setProgressListener(this@OKSignService)
@@ -264,5 +269,6 @@ class OKSignService : IntentService(TAG), CoroutineScope, ProgressListener {
         const val ACTION_SIGN_SUCCESS_ALL =
             "com.huanchengfly.tieba.post.service.action.SIGN_SUCCESS_ALL"
         const val ACTION_START_SIGN = "com.huanchengfly.tieba.post.service.action.ACTION_SIGN_START"
+        const val EXTRA_EXPECTED_ACCOUNT_UID = "expected_account_uid"
     }
 }

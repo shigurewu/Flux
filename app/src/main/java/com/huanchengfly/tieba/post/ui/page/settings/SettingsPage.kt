@@ -1,4 +1,7 @@
 ﻿package com.huanchengfly.tieba.post.ui.page.settings
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.CloudDownload
@@ -184,7 +187,8 @@ fun SettingsPage(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
+                    .padding(paddingValues)
+                    .wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth(),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
                 // ── 账号

@@ -28,10 +28,11 @@ plugins {
 val sha: String? = System.getenv("GITHUB_SHA")
 val isCI: String? = System.getenv("CI")
 val isSelfBuild = isCI.isNullOrEmpty() || !isCI.equals("true", ignoreCase = true)
-val applicationVersionCode = appProperties.getProperty("versionCode").toInt()
-var applicationVersionName = appProperties.getProperty("versionName")
+val imReceiveTest = providers.gradleProperty("fluxImReceiveTest").orNull == "true"
+val applicationVersionCode = if (imReceiveTest) 72 else appProperties.getProperty("versionCode").toInt()
+var applicationVersionName = if (imReceiveTest) "1.3.20-im.3" else appProperties.getProperty("versionName")
 val isPerVersion = appProperties.getProperty("isPreRelease").toBoolean()
-if (isPerVersion) {
+if (isPerVersion && !imReceiveTest) {
     applicationVersionName += "-${appProperties.getProperty("preReleaseName")}.${appProperties.getProperty("preReleaseVer")}"
 }
 if (!isSelfBuild && !sha.isNullOrEmpty()) {
@@ -68,6 +69,7 @@ android {
         targetSdk = 37
         versionCode = applicationVersionCode
         versionName = applicationVersionName
+        buildConfigField("boolean", "IM_RECEIVE_TEST", imReceiveTest.toString())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

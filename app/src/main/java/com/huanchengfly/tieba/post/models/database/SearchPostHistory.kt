@@ -8,6 +8,7 @@ import androidx.room.PrimaryKey
 @Immutable
 @Entity(tableName = "searchposthistory")
 data class SearchPostHistory(
+    @ColumnInfo(defaultValue = "'legacy'") val owner: String = "legacy",
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val content: String,
     @ColumnInfo(name = "forumname") val forumName: String,

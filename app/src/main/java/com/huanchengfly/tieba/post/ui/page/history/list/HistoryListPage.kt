@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.history.list
 
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -49,7 +51,7 @@ import com.huanchengfly.tieba.post.utils.HistoryUtil
 @Composable
 fun HistoryListPage(
     type: Int,
-    viewModel: HistoryListViewModel = if (type == HistoryUtil.TYPE_THREAD) pageViewModel<ThreadHistoryListViewModel>() else pageViewModel<ForumHistoryListViewModel>()
+    viewModel: HistoryListViewModel = if (type == HistoryUtil.TYPE_THREAD) pageViewModel<ThreadHistoryListViewModel>(key = "thread_history_" + localDataOwner(LocalAccount.current?.uid)) else pageViewModel<ForumHistoryListViewModel>(key = "forum_history_" + localDataOwner(LocalAccount.current?.uid))
 ) {
     LazyLoad(loaded = viewModel.initialized) {
         viewModel.send(HistoryListUiIntent.Refresh)

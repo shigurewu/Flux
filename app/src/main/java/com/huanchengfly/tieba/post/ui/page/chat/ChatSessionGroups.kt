@@ -7,6 +7,24 @@ import java.io.IOException
 
 internal data class ChatSessionGroups(val normal: List<ImSession>, val folded: List<ImSession>)
 
+internal sealed interface InboxConversation {
+    val key: String
+    val latest: ImSession?
+
+    data class Direct(override val latest: ImSession) : InboxConversation {
+        override val key = "chat-${latest.uid}-${latest.peerUid}"
+    }
+
+    data class Folded(val sessions: List<ImSession>) : InboxConversation {
+        override val key = "folded"
+        override val latest = sessions.maxByOrNull { it.lastMsgTime }
+    }
+}
+
+internal fun ChatSessionGroups.inboxConversations(): List<InboxConversation> =
+    (normal.map(InboxConversation::Direct) + InboxConversation.Folded(folded))
+        .sortedByDescending { it.latest?.lastMsgTime ?: Long.MIN_VALUE }
+
 internal fun groupChatSessions(sessions: List<ImSession>, followed: Set<Long>, owner: String): ChatSessionGroups {
     val (normal, folded) = sessions.filter { it.uid == owner }.partition { it.peerUid in followed }
     return ChatSessionGroups(normal, folded)

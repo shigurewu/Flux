@@ -1,5 +1,6 @@
 ﻿package com.huanchengfly.tieba.post.ui.page.main.home
 
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -150,7 +151,7 @@ fun SearchBox(
         Surface(
             color = backgroundColor,
             contentColor = contentColor,
-            shape = RoundedCornerShape(6.dp),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .debounceClickable(onClick = onClick)
@@ -365,7 +366,7 @@ private fun ForumItem(
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun HomePage(
-    viewModel: HomeViewModel = pageViewModel(),
+    viewModel: HomeViewModel = pageViewModel(key = "home_" + localDataOwner(LocalAccount.current?.uid)),
     canOpenExplore: Boolean = false,
     onOpenExplore: () -> Unit = {},
 ) {

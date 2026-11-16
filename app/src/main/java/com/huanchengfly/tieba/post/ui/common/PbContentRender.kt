@@ -176,7 +176,7 @@ data class PicContentRender(
                 .focusable()
                 .clip(RoundedCornerShape(context.appPreferences.radius.dp))
                 .fillMaxWidth(widthFraction)
-                .aspectRatio(width * 1f / height),
+                .aspectRatio(if (width > 0 && height > 0) width * 1f / height else 1f),
             photoViewData = photoViewData,
             contentScale = ContentScale.Crop
         )
@@ -268,7 +268,7 @@ data class VideoContentRender(
             val picModifier = Modifier
                 .clip(RoundedCornerShape(context.appPreferences.radius.dp))
                 .fillMaxWidth(widthFraction)
-                .aspectRatio(width * 1f / height)
+                .aspectRatio(if (width > 0 && height > 0) width * 1f / height else 1f)
 
             if (videoUrl.isNotBlank()) {
                 Box(

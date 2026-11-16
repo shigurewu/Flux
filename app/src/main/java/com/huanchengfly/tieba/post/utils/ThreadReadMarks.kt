@@ -1,18 +1,16 @@
 package com.huanchengfly.tieba.post.utils
 
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.huanchengfly.tieba.post.App
-import com.huanchengfly.tieba.post.dataStore
 import com.huanchengfly.tieba.post.fromJson
 import com.huanchengfly.tieba.post.toJson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /**
- * 帖子续看标记：记录最后停留的楼层，重开同一帖子时提供「续看」入口。
- *
- * 存 DataStore 单键 JSON（`thread_read_marks`），按时间 LRU 截断，不引入 Room 迁移；
- * 跨排序（正/倒序）的记录不互相消费，避免倒序视图跳到错误方向。
+ * 记录一种排序下最后阅读的楼层，供动态页的回复入口定位。
  */
 data class ThreadReadMark(
     val postId: Long = 0,
@@ -20,16 +18,30 @@ data class ThreadReadMark(
     /** 记录时的排序：true = 倒序 */
     val isDesc: Boolean = false,
     val timestamp: Long = 0,
+    val offsetDp: Float? = null,
 )
 
-object ThreadReadMarks {
-    private val KEY = stringPreferencesKey("thread_read_marks")
-    private const val MAX_ENTRIES = 300
+internal class ThreadReadMarks(
+    private val store: DataStore<Preferences>,
+    accountUid: String,
+) {
+    // The old shared key has no owner metadata. Leave it unread for every account.
+    private val key = stringPreferencesKey(
+        if (accountUid.isEmpty()) "thread_read_marks_guest" else "thread_read_marks_uid_$accountUid"
+    )
 
-    private val store get() = App.INSTANCE.dataStore
+    private companion object {
+        const val MAX_ENTRIES = 300
+    }
 
-    suspend fun get(threadId: Long, isDesc: Boolean): ThreadReadMark? =
-        runCatching { currentMarks()["$threadId:$isDesc"] }.getOrNull()
+    suspend fun getLatestThreadMark(threadId: Long, isDesc: Boolean): ThreadReadMark? =
+        runCatching {
+            val marks = currentMarks(store.data.first())
+            val latest = marks.maxByOrNull { it.value.timestamp }
+            if (latest?.key?.substringBefore(':') == threadId.toString()) {
+                marks["$threadId:$isDesc"]
+            } else null
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull()
 
     suspend fun put(threadId: Long, mark: ThreadReadMark) {
         runCatching {
@@ -45,14 +57,11 @@ object ThreadReadMarks {
                     marks.clear()
                     marks.putAll(kept)
                 }
-                prefs[KEY] = marks.toJson()
+                prefs[key] = marks.toJson()
             }
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
-    private suspend fun currentMarks(): MutableMap<String, ThreadReadMark> =
-        currentMarks(store.data.first())
-
-    private fun currentMarks(prefs: androidx.datastore.preferences.core.Preferences): MutableMap<String, ThreadReadMark> =
-        prefs[KEY]?.fromJson<MutableMap<String, ThreadReadMark>>() ?: mutableMapOf()
+    private fun currentMarks(prefs: Preferences): MutableMap<String, ThreadReadMark> =
+        prefs[key]?.fromJson<MutableMap<String, ThreadReadMark>>() ?: mutableMapOf()
 }

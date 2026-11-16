@@ -1,5 +1,10 @@
 package com.huanchengfly.tieba.post.ui.page.chat
 
+import android.os.SystemClock
+import androidx.compose.material.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Folder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,9 +71,39 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * 私信会话列表（嵌入「消息」页 pager 的「私信」tab）。
- */
+internal data class ChatGrouping(val groups: ChatSessionGroups?, val failed: Boolean)
+
+private data class ChatFollowing(val ids: Set<Long>, val loadedAt: Long)
+private val chatFollowingCache = mutableMapOf<String, ChatFollowing>()
+private const val FOLLOWING_TTL_MS = 5 * 60_000L
+
+@Composable
+internal fun rememberChatGrouping(sessions: List<ImSession>, uid: String, retry: Int): ChatGrouping = key(uid) {
+    var followFailed by remember { mutableStateOf(false) }
+    val following by produceState(initialValue = chatFollowingCache[uid]?.ids, uid, retry) {
+        followFailed = false
+        if (uid.isBlank()) return@produceState
+        val cached = chatFollowingCache[uid]
+        value = cached?.ids
+        if (retry == 0 && cached != null && SystemClock.elapsedRealtime() - cached.loadedAt < FOLLOWING_TTL_MS) {
+            return@produceState
+        }
+        try {
+            val ids = loadChatFollowIds(
+                isCurrentOwner = { AccountUtil.currentAccount?.uid == uid },
+                fetchPage = { TiebaApi.getInstance().followListFlow(it).first() },
+            )
+            chatFollowingCache[uid] = ChatFollowing(ids, SystemClock.elapsedRealtime())
+            value = ids
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { followFailed = true }
+    }
+    val groups = remember(sessions, following) {
+        following?.let { groupChatSessions(sessions, it, uid) }
+    }
+    ChatGrouping(groups, followFailed)
+}
+
 @Composable
 fun ChatListPage(folded: Boolean = false) {
     if (!com.huanchengfly.tieba.post.im.PrivateMessaging.enabled) return
@@ -77,26 +112,11 @@ fun ChatListPage(folded: Boolean = false) {
     val loggedIn = uid.isNotBlank()
     val sessions = rememberImSessions()
     var retry by remember(uid) { mutableIntStateOf(0) }
-    var followFailed by remember(uid) { mutableStateOf(false) }
-    val following by produceState<Set<Long>?>(initialValue = null, uid, retry) {
-        value = null
-        followFailed = false
-        if (uid.isBlank()) return@produceState
-        try {
-            value = loadChatFollowIds(
-                isCurrentOwner = { AccountUtil.currentAccount?.uid == uid },
-                fetchPage = { TiebaApi.getInstance().followListFlow(it).first() },
-            )
-        } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { followFailed = true }
-    }
-    val groups = remember(sessions, following, uid) {
-        following?.let { groupChatSessions(sessions, it, uid) }
-    }
+    val (groups, followFailed) = rememberChatGrouping(sessions, uid, retry)
     val visibleSessions = if (folded) groups?.folded.orEmpty() else groups?.normal ?: sessions
 
     Column(Modifier.fillMaxSize()) {
-        if (loggedIn && following == null) {
+        if (loggedIn && groups == null) {
             Text(
                 text = if (!followFailed) "正在核对关注关系…"
                     else if (folded) "关注关系加载失败，点此重试"
@@ -133,7 +153,7 @@ fun ChatListPage(folded: Boolean = false) {
                 contentAlignment = Alignment.Center,
             ) {
                 EmptyState(
-                    title = if (folded && loggedIn && following == null) {
+                    title = if (folded && loggedIn && groups == null) {
                         if (followFailed) "关注关系加载失败" else "正在加载…"
                     } else if (folded && loggedIn) "暂无折叠消息" else stringResource(
                         id = if (loggedIn) R.string.chat_empty_title else R.string.title_empty_login
@@ -177,7 +197,37 @@ fun ChatListPage(folded: Boolean = false) {
 }
 
 @Composable
-private fun ChatSessionItem(session: ImSession, onClick: () -> Unit) {
+internal fun ChatSessionItem(session: ImSession, onClick: () -> Unit) {
+    ChatSessionRow(
+        title = session.peerName.ifEmpty { "用户${session.peerUid}" },
+        preview = session.lastMsgPreview,
+        lastMsgTime = session.lastMsgTime,
+        unreadCount = session.unreadCount,
+        avatar = { modifier ->
+            AsyncImage(imageUri = getAvatarUrl(session.peerPortrait), contentDescription = null, modifier = modifier)
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+internal fun FoldedChatSessionItem(preview: String, lastMsgTime: Long, unreadCount: Int, onClick: () -> Unit) {
+    ChatSessionRow("折叠消息", preview, lastMsgTime, unreadCount, avatar = { modifier ->
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.Folder, contentDescription = null, tint = ExtendedTheme.colors.text)
+        }
+    }, onClick = onClick)
+}
+
+@Composable
+private fun ChatSessionRow(
+    title: String,
+    preview: String,
+    lastMsgTime: Long,
+    unreadCount: Int,
+    avatar: @Composable (Modifier) -> Unit,
+    onClick: () -> Unit,
+) {
     val hideDot by LocalContext.current.dataStore.collectPreferenceAsState(booleanPreferencesKey("hideNotificationDot"), false)
     val hapticFeedback = LocalHapticFeedback.current
     Row(
@@ -191,21 +241,14 @@ private fun ChatSessionItem(session: ImSession, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AsyncImage(
-            imageUri = getAvatarUrl(session.peerPortrait),
-            contentDescription = session.peerName,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(ExtendedTheme.colors.chip),
-        )
+        avatar(Modifier.size(48.dp).clip(CircleShape).background(ExtendedTheme.colors.chip))
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = session.peerName.ifEmpty { "用户${session.peerUid}" },
+                    text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     maxLines = 1,
@@ -215,13 +258,13 @@ private fun ChatSessionItem(session: ImSession, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = formatChatTime(session.lastMsgTime),
+                    text = formatChatTime(lastMsgTime),
                     fontSize = 12.sp,
                     color = ExtendedTheme.colors.textSecondary,
                 )
             }
             EmoticonText(
-                text = session.lastMsgPreview,
+                text = preview,
                 memeStickerSize = false,
                 fontSize = 13.sp,
                 maxLines = 1,
@@ -229,7 +272,7 @@ private fun ChatSessionItem(session: ImSession, onClick: () -> Unit) {
                 color = ExtendedTheme.colors.textSecondary,
             )
         }
-        if (session.unreadCount > 0 && !hideDot) {
+        if (unreadCount > 0 && !hideDot) {
             Box(
                 modifier = Modifier
                     .size(20.dp)
@@ -238,7 +281,7 @@ private fun ChatSessionItem(session: ImSession, onClick: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (session.unreadCount > 99) "99+" else session.unreadCount.toString(),
+                    text = if (unreadCount > 99) "99+" else unreadCount.toString(),
                     fontSize = 11.sp,
                     color = ExtendedTheme.colors.onPrimary,
                 )

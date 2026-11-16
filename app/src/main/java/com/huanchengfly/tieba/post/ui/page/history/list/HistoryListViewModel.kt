@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.history.list
 
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import androidx.compose.runtime.Stable
 import com.huanchengfly.tieba.post.api.retrofit.exception.getErrorMessage
 import com.huanchengfly.tieba.post.arch.BaseViewModel
@@ -47,17 +49,17 @@ abstract class HistoryListViewModel :
 @HiltViewModel
 class ThreadHistoryListViewModel @Inject constructor() : HistoryListViewModel() {
     override fun createPartialChangeProducer(): PartialChangeProducer<HistoryListUiIntent, HistoryListPartialChange, HistoryListUiState> =
-        HistoryListPartialChangeProducer(HistoryUtil.TYPE_THREAD)
+        HistoryListPartialChangeProducer(HistoryUtil.TYPE_THREAD, localDataOwner(AccountUtil.currentAccount?.uid))
 }
 
 @Stable
 @HiltViewModel
 class ForumHistoryListViewModel @Inject constructor() : HistoryListViewModel() {
     override fun createPartialChangeProducer(): PartialChangeProducer<HistoryListUiIntent, HistoryListPartialChange, HistoryListUiState> =
-        HistoryListPartialChangeProducer(HistoryUtil.TYPE_FORUM)
+        HistoryListPartialChangeProducer(HistoryUtil.TYPE_FORUM, localDataOwner(AccountUtil.currentAccount?.uid))
 }
 
-private class HistoryListPartialChangeProducer(val type: Int) :
+private class HistoryListPartialChangeProducer(val type: Int, private val owner: String) :
     PartialChangeProducer<HistoryListUiIntent, HistoryListPartialChange, HistoryListUiState> {
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun toPartialChangeFlow(intentFlow: Flow<HistoryListUiIntent>): Flow<HistoryListPartialChange> =
@@ -76,7 +78,7 @@ private class HistoryListPartialChangeProducer(val type: Int) :
 
     private fun produceRefreshPartialChange(): Flow<HistoryListPartialChange.Refresh> =
         flow<HistoryListPartialChange.Refresh> {
-            val histories = HistoryUtil.get(type, 0)
+            val histories = HistoryUtil.get(owner, type, 0)
             emit(
                 HistoryListPartialChange.Refresh.Success(
                     todayHistoryData = histories.filter { DateTimeUtils.isToday(it.timestamp) },
@@ -90,7 +92,7 @@ private class HistoryListPartialChangeProducer(val type: Int) :
 
     private fun HistoryListUiIntent.LoadMore.producePartialChange(): Flow<HistoryListPartialChange.LoadMore> =
         flow<HistoryListPartialChange.LoadMore> {
-            val histories = HistoryUtil.get(type, page)
+            val histories = HistoryUtil.get(owner, type, page)
             emit(
                 HistoryListPartialChange.LoadMore.Success(
                     todayHistoryData = histories.filter { DateTimeUtils.isToday(it.timestamp) },
@@ -110,7 +112,7 @@ private class HistoryListPartialChangeProducer(val type: Int) :
 
     private fun HistoryListUiIntent.Delete.producePartialChange() =
         flow<HistoryListPartialChange.Delete> {
-            DatabaseUtil.deleteHistoryById(id)
+            DatabaseUtil.deleteHistoryById(owner, id)
             emit(HistoryListPartialChange.Delete.Success(id))
         }
             .flowOn(Dispatchers.IO)

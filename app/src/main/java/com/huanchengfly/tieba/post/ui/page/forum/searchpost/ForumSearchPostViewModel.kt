@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.forum.searchpost
 
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import com.huanchengfly.tieba.post.App
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.utils.DatabaseUtil
@@ -42,7 +44,7 @@ class ForumSearchPostViewModel @Inject constructor() :
     override fun createInitialState(): ForumSearchPostUiState = ForumSearchPostUiState()
 
     override fun createPartialChangeProducer(): PartialChangeProducer<ForumSearchPostUiIntent, ForumSearchPostPartialChange, ForumSearchPostUiState> =
-        ForumSearchPostPartialChangeProducer
+        ForumSearchPostPartialChangeProducer(localDataOwner(AccountUtil.currentAccount?.uid))
 
     override fun dispatchEvent(partialChange: ForumSearchPostPartialChange): UiEvent? =
         when (partialChange) {
@@ -67,7 +69,7 @@ class ForumSearchPostViewModel @Inject constructor() :
             else -> null
         }
 
-    private object ForumSearchPostPartialChangeProducer :
+    private class ForumSearchPostPartialChangeProducer(private val owner: String) :
         PartialChangeProducer<ForumSearchPostUiIntent, ForumSearchPostPartialChange, ForumSearchPostUiState> {
         @OptIn(ExperimentalCoroutinesApi::class)
         override fun toPartialChangeFlow(intentFlow: Flow<ForumSearchPostUiIntent>): Flow<ForumSearchPostPartialChange> =
@@ -86,7 +88,7 @@ class ForumSearchPostViewModel @Inject constructor() :
 
         private fun produceInitPartialChange(): Flow<ForumSearchPostPartialChange.Init> =
             flow<ForumSearchPostPartialChange.Init> {
-                val searchHistories = DatabaseUtil.getAllSearchPostHistories()
+                val searchHistories = DatabaseUtil.getAllSearchPostHistories(owner)
                 emit(ForumSearchPostPartialChange.Init.Success(searchHistories))
             }.catch {
                 emit(ForumSearchPostPartialChange.Init.Failure(it))
@@ -97,7 +99,7 @@ class ForumSearchPostViewModel @Inject constructor() :
             flowOf(keyword.trim())
                 .filter { it.isNotBlank() }
                 .onEach {
-                    DatabaseUtil.saveSearchPostHistory(it, forumName)
+                    DatabaseUtil.saveSearchPostHistory(owner, it, forumName)
                 }
                 .flatMapConcat {
                     TiebaApi.getInstance()
@@ -145,7 +147,7 @@ class ForumSearchPostViewModel @Inject constructor() :
 
         private fun ForumSearchPostUiIntent.DeleteHistory.producePartialChange(): Flow<ForumSearchPostPartialChange.DeleteHistory> =
             flow<ForumSearchPostPartialChange.DeleteHistory> {
-                DatabaseUtil.deleteSearchPostHistory(id)
+                DatabaseUtil.deleteSearchPostHistory(owner, id)
                 emit(ForumSearchPostPartialChange.DeleteHistory.Success(id))
             }.catch {
                 emit(ForumSearchPostPartialChange.DeleteHistory.Failure(it))
@@ -153,7 +155,7 @@ class ForumSearchPostViewModel @Inject constructor() :
 
         private fun produceClearHistoryPartialChange(): Flow<ForumSearchPostPartialChange.ClearHistory> =
             flow<ForumSearchPostPartialChange.ClearHistory> {
-                DatabaseUtil.clearSearchPostHistory()
+                DatabaseUtil.clearSearchPostHistory(owner)
                 emit(ForumSearchPostPartialChange.ClearHistory.Success)
             }.catch {
                 emit(ForumSearchPostPartialChange.ClearHistory.Failure(it))

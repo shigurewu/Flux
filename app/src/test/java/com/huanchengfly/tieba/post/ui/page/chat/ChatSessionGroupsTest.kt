@@ -9,6 +9,30 @@ import org.junit.Test
 import java.io.IOException
 
 class ChatSessionGroupsTest {
+    @Test fun foldedRowUsesMostRecentStrangerTimeAmongDirectChats() {
+        val older = ImSession(uid = "a", peerUid = 1, lastMsgTime = 100)
+        val newer = ImSession(uid = "a", peerUid = 2, lastMsgTime = 300)
+        val strangers = listOf(
+            ImSession(uid = "a", peerUid = 3, lastMsgTime = 50),
+            ImSession(uid = "a", peerUid = 4, lastMsgTime = 200),
+        )
+        val rows = ChatSessionGroups(listOf(older, newer), strangers).inboxConversations()
+        assertEquals(
+            listOf(InboxConversation.Direct(newer), InboxConversation.Folded(strangers), InboxConversation.Direct(older)),
+            rows,
+        )
+        val latestStranger = strangers.last().copy(lastMsgTime = 400)
+        assertEquals("folded", ChatSessionGroups(listOf(older, newer), listOf(latestStranger)).inboxConversations().first().key)
+    }
+
+    @Test fun emptyFoldedRowStaysBelowEveryDirectChat() {
+        val session = ImSession(uid = "a", peerUid = 1)
+        assertEquals(
+            listOf(InboxConversation.Direct(session), InboxConversation.Folded(emptyList())),
+            ChatSessionGroups(listOf(session), emptyList()).inboxConversations(),
+        )
+    }
+
     @Test fun fullFollowingListKeepsPageTwoFriendOutOfFoldedMessages(): Unit = runBlocking {
         val ids = loadChatFollowIds({ true }) { page ->
             FollowListBean(hasMore = if (page == 1) 1 else 0,

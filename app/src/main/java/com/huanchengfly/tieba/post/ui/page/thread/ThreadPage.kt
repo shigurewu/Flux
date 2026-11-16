@@ -1,4 +1,8 @@
 package com.huanchengfly.tieba.post.ui.page.thread
+import com.huanchengfly.tieba.post.utils.DatabaseUtil
+import com.huanchengfly.tieba.post.utils.replyDraftKey
+import androidx.compose.foundation.layout.heightIn
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import com.huanchengfly.tieba.post.utils.ThreadReadMarks
 import com.huanchengfly.tieba.post.utils.ThreadReadMark
 
@@ -36,6 +40,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -66,7 +71,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
 import androidx.compose.material.icons.automirrored.rounded.ChromeReaderMode
 import androidx.compose.material.icons.automirrored.rounded.Sort
-import androidx.compose.material.icons.rounded.AlignVerticalTop
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Face6
@@ -98,9 +102,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
@@ -138,7 +149,6 @@ import com.huanchengfly.tieba.post.api.retrofit.exception.getErrorMessage
 import com.huanchengfly.tieba.post.arch.GlobalEvent
 import com.huanchengfly.tieba.post.arch.ImmutableHolder
 import com.huanchengfly.tieba.post.arch.collectPartialAsState
-import com.huanchengfly.tieba.post.arch.emitGlobalEventSuspend
 import com.huanchengfly.tieba.post.arch.onEvent
 import com.huanchengfly.tieba.post.arch.onGlobalEvent
 import com.huanchengfly.tieba.post.arch.pageViewModel
@@ -202,6 +212,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.PromptDialog
 import com.huanchengfly.tieba.post.ui.widgets.compose.Sizes
 import com.huanchengfly.tieba.post.ui.widgets.compose.TextWithMinWidth
 import com.huanchengfly.tieba.post.ui.widgets.compose.TipScreen
+import com.huanchengfly.tieba.post.ui.widgets.compose.scrollToReadingPosition
 import com.huanchengfly.tieba.post.ui.widgets.compose.TitleCentredToolbar
 import com.huanchengfly.tieba.post.ui.widgets.compose.UserHeader
 import com.huanchengfly.tieba.post.ui.widgets.compose.VerticalDivider
@@ -214,6 +225,8 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.states.PostSkeletonCard
 import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreen
 import com.huanchengfly.tieba.post.ui.widgets.compose.states.ThreadPageSkeleton
 import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.dataStore
 import com.huanchengfly.tieba.post.utils.DateTimeUtils.getRelativeTimeString
 import com.huanchengfly.tieba.post.utils.HistoryUtil
 import com.huanchengfly.tieba.post.utils.StringUtil
@@ -227,12 +240,10 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlin.concurrent.thread
-import kotlin.math.max
 
 private fun getDescText(
     time: Long?,
@@ -550,8 +561,24 @@ fun ThreadPage(
     extra: ThreadPageExtra? = null,
     threadInfo: ThreadInfo? = null,
     scrollToReply: Boolean = false,
+    resumeFromFeed: Boolean = false,
     viewModel: ThreadViewModel = pageViewModel(),
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val currentAccountUid = LocalAccount.current?.uid.orEmpty()
+    val readOwnerUid = rememberSaveable(threadId) { currentAccountUid }
+    val readMarks = remember(readOwnerUid) { ThreadReadMarks(App.INSTANCE.dataStore, readOwnerUid) }
+    val isReadOwnerActive = currentAccountUid == readOwnerUid
+    androidx.compose.runtime.DisposableEffect(viewModel, threadId, readOwnerUid) {
+        onDispose {
+            if (AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid &&
+                !App.INSTANCE.appPreferences.incognitoMode
+            ) viewModel.cacheReadComments(readOwnerUid, threadId)
+        }
+    }
+    var savedResumeMark by remember(threadId, readOwnerUid) { mutableStateOf<ThreadReadMark?>(null) }
+    var resumePostId by remember(threadId) { mutableStateOf(0L) }
+    var commentResumePostId by rememberSaveable(threadId, readOwnerUid) { mutableStateOf(0L) }
     LazyLoad(loaded = viewModel.initialized) {
         viewModel.send(
             ThreadUiIntent.Init(
@@ -563,18 +590,38 @@ fun ThreadPage(
                 sortType
             )
         )
-        viewModel.send(
-            ThreadUiIntent.Load(
-                threadId,
-                page = 0,
-                postId = postId,
-                forumId = forumId,
-                seeLz = seeLz,
-                sortType = sortType,
-                from = from
+        coroutineScope.launch {
+            if ((!scrollToReply || resumeFromFeed) && postId == 0L && !seeLz &&
+                AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid &&
+                !App.INSTANCE.appPreferences.incognitoMode
+            ) {
+                val mark = readMarks.getLatestThreadMark(threadId, sortType == ThreadSortType.SORT_TYPE_DESC)
+                    ?.takeIf { it.floor >= 2 && it.postId > 0L }
+                val savedPostId = mark?.postId ?: 0L
+                if (AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid &&
+                    !App.INSTANCE.appPreferences.incognitoMode
+                ) {
+                    savedResumeMark = mark
+                    if (scrollToReply) resumePostId = savedPostId
+                    else commentResumePostId = savedPostId
+                }
+            }
+            viewModel.send(
+                ThreadUiIntent.Load(
+                    threadId,
+                    page = 0,
+                    postId = resumePostId.takeIf { it > 0L } ?: postId,
+                    forumId = forumId,
+                    seeLz = seeLz,
+                    sortType = sortType,
+                    from = from,
+                    loadThroughResumeTarget = resumePostId > 0L,
+                    resumeFloor = savedResumeMark?.floor ?: 0,
+                    resumeAccount = readOwnerUid.takeUnless { App.INSTANCE.appPreferences.incognitoMode },
+                )
             )
-        )
-        viewModel.initialized = true
+            viewModel.initialized = true
+        }
     }
     val scaffoldState = rememberScaffoldState()
     val data by viewModel.uiState.collectPartialAsState(
@@ -635,7 +682,19 @@ fun ThreadPage(
     )
     val hasPrevious by viewModel.uiState.collectPartialAsState(
         prop1 = ThreadUiState::hasPrevious,
-        initial = true
+        initial = false
+    )
+    val currentPageMin by viewModel.uiState.collectPartialAsState(
+        prop1 = ThreadUiState::currentPageMin,
+        initial = 0
+    )
+    val isLoadingPrevious by viewModel.uiState.collectPartialAsState(
+        prop1 = ThreadUiState::isLoadingPrevious,
+        initial = false
+    )
+    val loadPreviousFailed by viewModel.uiState.collectPartialAsState(
+        prop1 = ThreadUiState::loadPreviousFailed,
+        initial = false
     )
     val currentPageMax by viewModel.uiState.collectPartialAsState(
         prop1 = ThreadUiState::currentPageMax,
@@ -667,7 +726,7 @@ fun ThreadPage(
     }
     val enablePullRefresh by remember {
         derivedStateOf {
-            hasPrevious || curSortType == ThreadSortType.SORT_TYPE_DESC
+            !hasPrevious && curSortType == ThreadSortType.SORT_TYPE_DESC
         }
     }
     val loadMoreEnd by remember {
@@ -705,7 +764,8 @@ fun ThreadPage(
     var showFontScaleDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
     // 快捷回复面板：与页面同 Window 的底部浮层，不跳转 ReplyPage
-    var quickReplyVisible by remember { mutableStateOf(false) }
+    var quickReplyVisible by remember(currentAccountUid) { mutableStateOf(false) }
+    val quickDraftKey = replyDraftKey(currentAccountUid, 0L, threadId, null, null)
     var quickReplySending by remember { mutableStateOf(false) }
 
     if (showFontScaleDialog) {
@@ -713,36 +773,92 @@ fun ThreadPage(
     }
 
     val lazyListState = rememberLazyListState()
+    var commentReturnKey by remember(threadId, curSortType, isSeeLz) { mutableStateOf<String?>(null) }
+    val latestRepliesFirst = curSortType == ThreadSortType.SORT_TYPE_DESC && latestPosts.isNotEmpty()
+    val replyItemsStart = 3 + if (latestRepliesFirst) latestPosts.size + 1 else 0
+    val firstReplyIndex = when {
+        latestRepliesFirst -> 2
+        data.isNotEmpty() -> replyItemsStart
+        else -> 1
+    }
+    fun replyIndex(key: String): Int? {
+        val index = data.indexOfFirst { "Post_${it.post.get { id }}" == key }
+        if (index >= 0) return replyItemsStart + index
+        val latestIndex = latestPosts.indexOfFirst { "LatestPost_${it.post.get { id }}" == key }
+        if (latestIndex < 0) return null
+        return (if (latestRepliesFirst) 2 else 4 + data.size.coerceAtLeast(1)) + latestIndex
+    }
+    fun loadPreviousReplies() {
+        val firstReply = data.firstOrNull()?.post ?: return
+        if (!hasPrevious || isLoadingPrevious || isRefreshing || currentPageMin <= 0) return
+        if (currentPageMin <= 1) return
+        viewModel.send(
+            ThreadUiIntent.LoadPrevious(
+                threadId = threadId,
+                page = previousReplyRequestPage(currentPageMin, totalPage, curSortType),
+                forumId = forumId,
+                postId = firstReply.get { id },
+                seeLz = isSeeLz,
+                sortType = curSortType,
+                postIds = data.map { it.post.get { id } },
+                expectedPage = currentPageMin - 1,
+            )
+        )
+    }
+    val prependOnApproach by rememberUpdatedState {
+        if (!loadPreviousFailed && lazyListState.firstVisibleItemIndex <= replyItemsStart + 2 &&
+            lazyListState.layoutInfo.visibleItemsInfo.any { it.index in (replyItemsStart - 1)..(replyItemsStart + 2) }
+        ) loadPreviousReplies()
+    }
+    val holdAtMissingReplies by rememberUpdatedState<(Float) -> Float> { delta ->
+        if (!hasPrevious || currentPageMin <= 1 || delta <= 0f ||
+            lazyListState.firstVisibleItemIndex < replyItemsStart - 1
+        ) {
+            0f
+        } else {
+            val layout = lazyListState.layoutInfo
+            val firstLoadedReply = layout.visibleItemsInfo.firstOrNull { it.index == replyItemsStart }
+            if (firstLoadedReply == null) {
+                0f
+            } else {
+                val distanceToGap = (layout.viewportStartOffset - firstLoadedReply.offset).coerceAtLeast(0)
+                val excess = (delta - distanceToGap).coerceAtLeast(0f)
+                if (excess > 0f && !loadPreviousFailed) loadPreviousReplies()
+                excess
+            }
+        }
+    }
+    val previousRepliesScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
+                Offset(0f, holdAtMissingReplies(available.y))
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (consumed.y + available.y > 0f) {
+                    prependOnApproach()
+                }
+                return Offset.Zero
+            }
+        }
+    }
     val bottomSheetState = rememberModalBottomSheetState(
         initialValue = ModalBottomSheetValue.Hidden,
         skipHalfExpanded = true
     )
     val lastVisibilityPost by remember {
         derivedStateOf {
-            data.firstOrNull { (post) ->
-                val lastPostKey = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull { info ->
-                    info.key is String && (info.key as String).startsWith("Post_")
-                }?.key as String?
-                lastPostKey?.endsWith(post.get { id }.toString()) == true
-            }?.post ?: firstPost
+            val lastPostKey = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull { info ->
+                (info.key as? String)?.startsWith("Post_") == true ||
+                    (info.key as? String)?.startsWith("LatestPost_") == true
+            }?.key
+            (data.firstOrNull { "Post_${it.post.get { id }}" == lastPostKey }
+                ?: latestPosts.firstOrNull { "LatestPost_${it.post.get { id }}" == lastPostKey })
+                ?.post ?: firstPost
         }
     }
     val lastVisibilityPostId by remember {
         derivedStateOf { lastVisibilityPost?.get { id } ?: 0L }
     }
-    // Debounce writes while scrolling; reuse the existing floor-jump path for resume.
-    LaunchedEffect(lastVisibilityPostId, curSortType, threadId) {
-        if (threadId != 0L && lastVisibilityPostId != 0L && !App.INSTANCE.appPreferences.incognitoMode) {
-            delay(800)
-            val markFloor = data.firstOrNull { it.post.get { id } == lastVisibilityPostId }?.post?.get { floor } ?: 0
-            if (markFloor > 0) ThreadReadMarks.put(threadId, ThreadReadMark(
-                postId = lastVisibilityPostId, floor = markFloor,
-                isDesc = curSortType == ThreadSortType.SORT_TYPE_DESC,
-                timestamp = System.currentTimeMillis()
-            ))
-        }
-    }
-    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
     if (showPrivacyDialog) {
@@ -796,9 +912,6 @@ fun ThreadPage(
         closeBottomSheet()
     }
 
-    viewModel.onEvent<ThreadUiEvent.ScrollToFirstReply> {
-        lazyListState.animateScrollToItem(1)
-    }
     viewModel.onEvent<ThreadUiEvent.ScrollToLatestReply> {
         if (curSortType != ThreadSortType.SORT_TYPE_DESC) {
             lazyListState.animateScrollToItem(2 + data.size)
@@ -806,43 +919,143 @@ fun ThreadPage(
             lazyListState.animateScrollToItem(1)
         }
     }
-    // 图片查看器「查看楼层」目标（issue #17）：未加载时经 Load(page=0, postId) 定位页加载
+    // 定位楼层时，未加载的目标通过 postId 获取所在页。
     var waitScrollToPostId by remember { mutableStateOf(0L) }
-    // 续看入口只在首屏加载后提供一次；指定楼层跳转/回复定位场景不打扰
-    var readMarkConsumed by remember { mutableStateOf(false) }
-    viewModel.onEvent<ThreadUiEvent.LoadSuccess> {
-        if (!readMarkConsumed && postId == 0L && !context.appPreferences.incognitoMode && !waitLoadSuccessAndScrollToFirstReply && waitScrollToPostId == 0L && !scrollToReply) {
-            readMarkConsumed = true
-            val mark = ThreadReadMarks.get(threadId, curSortType == ThreadSortType.SORT_TYPE_DESC)
-            if (mark != null && mark.floor >= 2 && mark.isDesc == (curSortType == ThreadSortType.SORT_TYPE_DESC)) {
-                coroutineScope.launch {
-                    val result = scaffoldState.snackbarHostState.showSnackbar(
-                        message = context.getString(R.string.tip_read_resume, mark.floor),
-                        actionLabel = context.getString(R.string.button_read_resume),
-                        duration = SnackbarDuration.Short
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        // 复用「查看楼层」同款链路：已加载直接滚，未加载先定位页再滚
-                        emitGlobalEventSuspend(
-                            GlobalEvent.ScrollToPost(threadId = threadId, postId = mark.postId)
-                        )
-                    }
-                }
+    var loadedScrollIndex by remember { mutableStateOf<Int?>(null) }
+    val resumeDensity = androidx.compose.ui.platform.LocalDensity.current.density
+    var loadedOffsetPx by remember { mutableStateOf<Int?>(null) }
+    var stableReplyKey by remember { mutableStateOf<String?>(null) }
+    var stableReplyOffset by remember { mutableStateOf(0) }
+    LaunchedEffect(lazyListState) {
+        snapshotFlow {
+            val layout = lazyListState.layoutInfo
+            val first = layout.visibleItemsInfo.firstOrNull { item ->
+                (item.key as? String)?.let { it.startsWith("Post_") || it.startsWith("LatestPost_") } == true
+            }
+            Triple(lazyListState.isScrollInProgress, first?.key as? String,
+                first?.let { layout.viewportStartOffset - it.offset } ?: 0)
+        }.collect { (moving, key, offset) ->
+            if (moving || key == null || stableReplyKey == null) {
+                stableReplyKey = key
+                stableReplyOffset = offset
             }
         }
-        if (waitScrollToPostId != 0L) {
-            // 「查看楼层」按 postId 定位页加载完成：滚到目标楼层（issue #17）
-            val targetPostId = waitScrollToPostId
+    }
+    val readingConfiguration = androidx.compose.ui.platform.LocalConfiguration.current
+    val readingWidth = readingConfiguration.screenWidthDp
+    val readingHeight = readingConfiguration.screenHeightDp
+    val readingFontScale = readingConfiguration.fontScale
+    LaunchedEffect(readingWidth, readingHeight, readingFontScale, data) {
+        val key = stableReplyKey ?: return@LaunchedEffect
+        if (lazyListState.isScrollInProgress || isRefreshing || loadedScrollIndex != null ||
+            resumePostId != 0L || waitScrollToPostId != 0L) return@LaunchedEffect
+        val index = replyIndex(key) ?: return@LaunchedEffect
+        lazyListState.scrollToReadingPosition(index, stableReplyOffset)
+    }
+    fun savedOffsetPx(postId: Long): Int? = savedResumeMark?.takeIf { it.postId == postId }
+        ?.offsetDp?.takeIf { it.isFinite() }?.let { (it * resumeDensity).toInt() }
+    suspend fun jumpToReply(targetPostId: Long, loadThroughResumeTarget: Boolean = false, retry: Boolean = false) {
+        val index = replyIndex("Post_$targetPostId") ?: replyIndex("LatestPost_$targetPostId")
+        if (!retry && index != null && (!loadThroughResumeTarget || !hasPrevious)) {
+            lazyListState.scrollToReadingPosition(index, savedOffsetPx(targetPostId).takeIf { loadThroughResumeTarget })
+        } else {
+            waitScrollToPostId = targetPostId
+            viewModel.send(
+                ThreadUiIntent.Load(
+                    threadId = threadId,
+                    page = 0,
+                    postId = targetPostId,
+                    forumId = forum?.get { id } ?: forumId,
+                    seeLz = isSeeLz,
+                    sortType = curSortType,
+                    loadThroughResumeTarget = loadThroughResumeTarget,
+                    resumeFloor = savedResumeMark?.floor ?: 0,
+                    resumeAccount = readOwnerUid.takeUnless { context.appPreferences.incognitoMode },
+                    forceResumeReload = retry,
+                )
+            )
+        }
+    }
+    viewModel.onEvent<ThreadUiEvent.LoadSuccess> {
+        val requestedResumeId = (resumePostId.takeIf { id -> id > 0 } ?: waitScrollToPostId)
+        loadedOffsetPx = if (it.resumeUnavailable) null else savedOffsetPx(requestedResumeId)
+        if (it.resumeUnavailable) {
+            resumePostId = 0L
             waitScrollToPostId = 0L
-            val index = data.indexOfFirst { it.post.get { id } == targetPostId }
-            if (index >= 0) {
-                coroutineScope.launch { lazyListState.animateScrollToItem(2 + index) }
-            } else {
-                lazyListState.animateScrollToItem(1)
+            waitLoadSuccessAndScrollToFirstReply = false
+            coroutineScope.launch {
+                val action = scaffoldState.snackbarHostState.showSnackbar(
+                    message = context.getString(if (it.targetIndex >= 0) R.string.thread_resume_nearby else R.string.message_resume_position_unavailable),
+                    actionLabel = context.getString(R.string.thread_resume_retry).takeIf { _ -> it.resumeInterrupted },
+                    duration = SnackbarDuration.Long,
+                )
+                if (action == SnackbarResult.ActionPerformed && isReadOwnerActive &&
+                    AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid && !context.appPreferences.incognitoMode
+                ) jumpToReply(requestedResumeId, loadThroughResumeTarget = true, retry = true)
             }
+            if (it.targetIndex >= 0) loadedScrollIndex = 3 + it.targetIndex
+            return@onEvent
+        }
+        if (resumePostId != 0L || waitScrollToPostId != 0L || postId != 0L) {
+            val canScrollToTarget = resumePostId == 0L || AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid
+            resumePostId = 0L
+            waitScrollToPostId = 0L
+            waitLoadSuccessAndScrollToFirstReply = false
+            // Load replaces the list and clears latestPosts: main post, header, previous-page row.
+            loadedScrollIndex = if (canScrollToTarget && it.targetIndex >= 0) 3 + it.targetIndex else 1
         } else if (it.page > 1 || waitLoadSuccessAndScrollToFirstReply) {
             waitLoadSuccessAndScrollToFirstReply = false
-            lazyListState.animateScrollToItem(1)
+            loadedScrollIndex = 1
+        }
+    }
+    LaunchedEffect(loadedScrollIndex, isRefreshing, isReadOwnerActive, firstReplyIndex) {
+        val index = loadedScrollIndex ?: return@LaunchedEffect
+        if (!isReadOwnerActive) {
+            loadedScrollIndex = null
+            return@LaunchedEffect
+        }
+        if (isRefreshing) return@LaunchedEffect
+        val target = if (index == 1) firstReplyIndex else index
+        snapshotFlow { lazyListState.layoutInfo.totalItemsCount }.first { it > target }
+        if (AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid) {
+            lazyListState.scrollToReadingPosition(target, loadedOffsetPx)
+        }
+        loadedScrollIndex = null
+        loadedOffsetPx = null
+    }
+    val resumeAnchorKey by remember(lazyListState) {
+        derivedStateOf { lazyListState.commentPosition().returnKey }
+    }
+    val resumeAnchorPost = resumeAnchorKey?.let { key ->
+        data.firstOrNull { "Post_${it.post.get { id }}" == key }?.post
+            ?: latestPosts.firstOrNull { "LatestPost_${it.post.get { id }}" == key }?.post
+    }
+    val resumeAnchorId = resumeAnchorPost?.get { id } ?: 0L
+    val resumeAnchorFloor = resumeAnchorPost?.get { floor } ?: 0
+    val resumeOffsetDp = if (!lazyListState.isScrollInProgress) {
+        val layout = lazyListState.layoutInfo
+        layout.visibleItemsInfo.firstOrNull { it.key == resumeAnchorKey }?.let {
+            (layout.viewportStartOffset - it.offset) / resumeDensity
+        }
+    } else null
+    val canSaveResume = isReadOwnerActive && !isSeeLz && !isRefreshing &&
+        !lazyListState.isScrollInProgress && !waitLoadSuccessAndScrollToFirstReply &&
+        resumePostId == 0L && waitScrollToPostId == 0L && loadedScrollIndex == null
+    LaunchedEffect(threadId, curSortType, resumeAnchorId, resumeAnchorFloor, resumeOffsetDp, canSaveResume) {
+        if (canSaveResume && threadId != 0L && resumeAnchorId > 0L && resumeAnchorFloor >= 2 &&
+            AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid &&
+            !App.INSTANCE.appPreferences.incognitoMode
+        ) {
+            readMarks.put(
+                threadId,
+                ThreadReadMark(
+                    postId = resumeAnchorId,
+                    floor = resumeAnchorFloor,
+                    offsetDp = resumeOffsetDp,
+                    isDesc = curSortType == ThreadSortType.SORT_TYPE_DESC,
+                    timestamp = System.currentTimeMillis(),
+                ),
+            )
         }
     }
     viewModel.onEvent<ThreadUiEvent.AddFavoriteSuccess> {
@@ -879,22 +1092,7 @@ fun ThreadPage(
     onGlobalEvent<GlobalEvent.ScrollToPost>(
         filter = { it.threadId == threadId }
     ) { event ->
-        val index = data.indexOfFirst { it.post.get { id } == event.postId }
-        if (index >= 0) {
-            coroutineScope.launch { lazyListState.animateScrollToItem(2 + index) }
-        } else {
-            waitScrollToPostId = event.postId
-            viewModel.send(
-                ThreadUiIntent.Load(
-                    threadId = threadId,
-                    page = 0,
-                    postId = event.postId,
-                    forumId = forum?.get { id } ?: forumId,
-                    seeLz = isSeeLz,
-                    sortType = curSortType
-                )
-            )
-        }
+        jumpToReply(event.postId)
     }
 
     val updateCollectMarkDialogState = rememberDialogState()
@@ -1040,11 +1238,12 @@ fun ThreadPage(
 
     var savedHistory by remember { mutableStateOf(false) }
     LaunchedEffect(threadId, threadTitle, author, lastVisibilityPostId) {
-        if ((!savedHistory || lastVisibilityPostId != 0L) && !context.appPreferences.incognitoMode) {
+        if (isReadOwnerActive && (!savedHistory || lastVisibilityPostId != 0L) && !context.appPreferences.incognitoMode) {
             runCatching {
                 if (threadTitle.isNotBlank()) {
                     HistoryUtil.saveHistory(
                         History(
+                            owner = localDataOwner(readOwnerUid),
                             title = threadTitle,
                             data = threadId.toString(),
                             type = HistoryUtil.TYPE_THREAD,
@@ -1438,13 +1637,35 @@ fun ThreadPage(
         }
     }
 
+    val backgroundCommentsUpdated by viewModel.uiState.collectPartialAsState(
+        prop1 = ThreadUiState::backgroundCommentsUpdated, initial = false)
+    LaunchedEffect(backgroundCommentsUpdated) {
+        if (backgroundCommentsUpdated) scaffoldState.snackbarHostState.showSnackbar(
+            context.getString(R.string.thread_resume_updated))
+    }
+    val resumeLoadedPages by viewModel.uiState.collectPartialAsState(prop1 = ThreadUiState::resumeLoadedPages, initial = null)
     ProvideNavigator(navigator = navigator) {
         StateScreen(
             modifier = Modifier.fillMaxSize(),
             isEmpty = isEmpty,
             isError = isError,
             isLoading = isRefreshing,
-            loadingScreen = { ThreadPageSkeleton() },
+            loadingScreen = {
+                val pages = resumeLoadedPages
+                if (pages == null) ThreadPageSkeleton() else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(context.getString(R.string.thread_resume_progress, pages))
+                        TextButton(onClick = {
+                            resumePostId = 0L
+                            waitScrollToPostId = 0L
+                            loadedScrollIndex = null
+                            savedResumeMark = null
+                            viewModel.send(ThreadUiIntent.Load(threadId, page = 0, forumId = forumId,
+                                seeLz = isSeeLz, sortType = curSortType))
+                        }) { Text(context.getString(R.string.thread_resume_from_start)) }
+                    }
+                }
+            },
             errorScreen = {
                 error?.let {
                     val (e) = it
@@ -1456,10 +1677,14 @@ fun ThreadPage(
                     ThreadUiIntent.Load(
                         threadId,
                         page = 0,
-                        postId = postId,
+                        postId = resumePostId.takeIf { it > 0 } ?: waitScrollToPostId.takeIf { it > 0 } ?: postId,
                         forumId = forumId,
-                        seeLz = seeLz,
-                        sortType = sortType
+                        seeLz = isSeeLz,
+                        sortType = curSortType,
+                        loadThroughResumeTarget = resumePostId > 0 || (waitScrollToPostId > 0 && savedResumeMark?.postId == waitScrollToPostId),
+                        resumeFloor = savedResumeMark?.floor ?: 0,
+                        resumeAccount = readOwnerUid.takeUnless { context.appPreferences.incognitoMode },
+                        forceResumeReload = true,
                     )
                 )
             }
@@ -1490,8 +1715,29 @@ fun ThreadPage(
                             onClickReply = { quickReplyVisible = true },
                             onJumpToComments = {
                                 coroutineScope.launch {
-                                    if (lazyListState.layoutInfo.totalItemsCount > 1) {
-                                        lazyListState.animateScrollToItem(1)
+                                    if (isRefreshing || lazyListState.layoutInfo.totalItemsCount <= 1 ||
+                                        lazyListState.isScrollInProgress
+                                    ) return@launch
+                                    val position = lazyListState.commentPosition()
+                                    if (position.inMainPost) {
+                                        val targetIndex = commentReturnKey?.let(::replyIndex)
+                                        val savedPostId = commentResumePostId
+                                        commentReturnKey = null
+                                        commentResumePostId = 0L
+                                        if (targetIndex != null) {
+                                            lazyListState.scrollToReadingPosition(targetIndex)
+                                        } else if (savedPostId > 0L && curSortType == sortType && !isSeeLz &&
+                                            AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid &&
+                                            !context.appPreferences.incognitoMode
+                                        ) {
+                                            jumpToReply(savedPostId, loadThroughResumeTarget = true)
+                                        } else {
+                                            lazyListState.scrollToReadingPosition(firstReplyIndex)
+                                        }
+                                    } else {
+                                        commentResumePostId = 0L
+                                        commentReturnKey = position.returnKey
+                                        lazyListState.scrollToItem(0)
                                     }
                                 }
                             },
@@ -1702,6 +1948,7 @@ fun ThreadPage(
                         LoadMoreLayout(
                             isLoading = isLoadingMore,
                             onLoadMore = {
+                                if (isRefreshing) return@LoadMoreLayout
                                 if (hasMore) {
                                     viewModel.send(
                                         ThreadUiIntent.LoadMore(
@@ -1745,8 +1992,10 @@ fun ThreadPage(
                         ) {
                             MyLazyColumn(
                                 state = lazyListState,
+                                userScrollEnabled = loadedScrollIndex == null &&
+                                    !(isRefreshing && (resumePostId != 0L || waitScrollToPostId != 0L)),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().nestedScroll(previousRepliesScroll)
                             ) {
                                 item(key = "FirstPost") {
                                     if (firstPost != null) {
@@ -1975,43 +2224,20 @@ fun ThreadPage(
                                 if (curSortType == ThreadSortType.SORT_TYPE_DESC) {
                                     latestPosts(true)
                                 }
-                                item(key = "LoadPreviousBtn") {
-                                    if (hasPrevious) {
+                                item(key = "PreviousReplies") {
+                                    if (hasPrevious && (isLoadingPrevious || loadPreviousFailed)) {
                                         Container {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .debounceClickable(onClick = {
-                                                        viewModel.send(
-                                                            ThreadUiIntent.LoadPrevious(
-                                                                threadId,
-                                                                max(currentPageMax - 1, 1),
-                                                                forumId,
-                                                                postId = data
-                                                                    .first()
-                                                                    .post
-                                                                    .get { id },
-                                                                seeLz = isSeeLz,
-                                                                sortType = curSortType,
-                                                                postIds = data.map { it.post.get { id } }
-                                                            )
-                                                        )
-                                                    })
-                                                    .padding(8.dp),
-                                                horizontalArrangement = Arrangement.Center,
-                                                verticalAlignment = Alignment.CenterVertically
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                                contentAlignment = Alignment.Center,
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.AlignVerticalTop,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(16.dp))
-                                                Text(
-                                                    text = stringResource(id = R.string.btn_load_previous),
-                                                    color = ExtendedTheme.colors.text,
-                                                    fontSize = 14.sp
-                                                )
+                                                if (isLoadingPrevious) {
+                                                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                                } else {
+                                                    TextButton(onClick = ::loadPreviousReplies) {
+                                                        Text(stringResource(R.string.retry_previous_replies))
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -2091,6 +2317,7 @@ fun ThreadPage(
                         )
                         QuickReplyPanel(
                             sending = quickReplySending,
+                            draftKey = quickDraftKey,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .imePadding(),
@@ -2110,7 +2337,7 @@ fun ThreadPage(
                                 val fname = forum?.get { name }
                                 if (fid == null || fname.isNullOrBlank()) {
                                     context.toastShort("获取吧信息失败，请重试")
-                                } else if (!quickReplySending) {
+                                } else if (!quickReplySending && AccountUtil.currentAccount?.uid.orEmpty() == currentAccountUid) {
                                     // 防重复提交：发送中不接受新的发送
                                     quickReplySending = true
                                     coroutineScope.launch {
@@ -2124,6 +2351,7 @@ fun ThreadPage(
                                             quickReplySending = false
                                             context.toastShort(it.getErrorMessage() ?: "回复失败")
                                         }.collect {
+                                            DatabaseUtil.updateDraft(quickDraftKey, "")
                                             quickReplySending = false
                                             quickReplyVisible = false
                                         }
@@ -2136,6 +2364,24 @@ fun ThreadPage(
             }
         }
     }
+}
+
+private data class CommentPosition(val inMainPost: Boolean, val returnKey: String?)
+
+private fun LazyListState.commentPosition(): CommentPosition {
+    val layout = layoutInfo
+    val readingLine = layout.viewportStartOffset + (layout.viewportSize.height * 0.3f).toInt()
+    val visibleReplies = layout.visibleItemsInfo.filter { item ->
+        val key = item.key as? String ?: return@filter false
+        key.startsWith("Post_") || key.startsWith("LatestPost_")
+    }
+    val atReadingLine = visibleReplies.firstOrNull {
+        readingLine in it.offset until (it.offset + it.size)
+    }
+    val inMainPost = firstVisibleItemIndex == 0 &&
+        (firstVisibleItemScrollOffset == 0 || atReadingLine == null)
+    val returnKey = if (inMainPost) null else (atReadingLine ?: visibleReplies.firstOrNull())?.key as? String
+    return CommentPosition(inMainPost, returnKey)
 }
 
 @Composable
@@ -2321,20 +2567,33 @@ private fun BottomBarStarBtn(
 @Composable
 private fun QuickReplyPanel(
     sending: Boolean,
+    draftKey: String,
     onSend: (String) -> Unit,
     onDismiss: () -> Unit,
     onOpenEditor: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var text by remember { mutableStateOf("") }
+    var text by remember(draftKey) { mutableStateOf("") }
+    var loaded by remember(draftKey) { mutableStateOf(false) }
+    val context = LocalContext.current
+    LaunchedEffect(draftKey) {
+        try {
+            text = DatabaseUtil.getDraft(draftKey)?.content.orEmpty()
+        } catch (_: android.database.SQLException) {
+            context.toastShort(R.string.message_reply_draft_load_failed)
+        }
+        loaded = true
+    }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     MyBackHandler(enabled = true) { onDismiss() }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboardController?.show()
+    LaunchedEffect(loaded) {
+        if (loaded) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
     }
 
     Column(
@@ -2351,10 +2610,10 @@ private fun QuickReplyPanel(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(40.dp)
+                    .heightIn(min = 40.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(ExtendedTheme.colors.bottomBarSurface)
-                    .padding(horizontal = 14.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 if (text.isEmpty()) {
@@ -2366,7 +2625,12 @@ private fun QuickReplyPanel(
                 }
                 BasicTextField(
                     value = text,
-                    onValueChange = { text = it },
+                    onValueChange = {
+                        text = it
+                        DatabaseUtil.updateDraft(draftKey, it)
+                    },
+                    enabled = loaded,
+                    readOnly = sending,
                     textStyle = MaterialTheme.typography.body2.copy(
                         color = ExtendedTheme.colors.text
                     ),
@@ -2378,7 +2642,7 @@ private fun QuickReplyPanel(
                 )
             }
 
-            IconButton(onClick = onOpenEditor) {
+            IconButton(onClick = onOpenEditor, enabled = loaded && !sending) {
                 Icon(
                     imageVector = Icons.Rounded.PhotoLibrary,
                     contentDescription = stringResource(id = R.string.desc_photo),
@@ -2388,7 +2652,7 @@ private fun QuickReplyPanel(
 
             Button(
                 onClick = { onSend(text.trim()) },
-                enabled = !sending && text.isNotBlank(),
+                enabled = loaded && !sending && text.isNotBlank(),
                 shape = RoundedCornerShape(20.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 colors = ButtonDefaults.buttonColors(

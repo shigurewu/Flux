@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.main
 
+import com.huanchengfly.tieba.post.utils.localDataOwner
+import androidx.compose.runtime.key
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -216,9 +218,11 @@ fun MainPage(
         }
     }
 
-    val homeViewModel = if (account != null) {
-        pageViewModel<HomeUiIntent, HomeViewModel>(listOf(HomeUiIntent.Refresh))
-    } else pageViewModel()
+    val homeOwner = localDataOwner(account?.uid)
+    val homeViewModel = pageViewModel<HomeUiIntent, HomeViewModel>(
+        initialIntent = if (account != null) listOf(HomeUiIntent.Refresh, HomeUiIntent.RefreshHistory) else emptyList(),
+        key = "home_$homeOwner",
+    )
 
     val coroutineScope = rememberCoroutineScope()
     val themeColors = ExtendedTheme.colors
@@ -230,11 +234,13 @@ fun MainPage(
                     icon = { AnimatedImageVector.animatedVectorResource(id = R.drawable.ic_animated_rounded_home) },
                     title = { stringResource(id = R.string.title_main) },
                     content = {
-                        HomePage(
-                            viewModel = homeViewModel,
-                            canOpenExplore = !LocalContext.current.appPreferences.hideExplore
-                        ) {
-                            onChangePosition(1)
+                        key(homeOwner) {
+                            HomePage(
+                                viewModel = homeViewModel,
+                                canOpenExplore = !LocalContext.current.appPreferences.hideExplore
+                            ) {
+                                onChangePosition(1)
+                            }
                         }
                     }
                 ),

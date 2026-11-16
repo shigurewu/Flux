@@ -1,16 +1,25 @@
 package com.huanchengfly.tieba.post.ui.page.main.notifications
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import android.app.NotificationManager
-import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.collectAsState
 import com.huanchengfly.tieba.post.im.ImManager
-import com.huanchengfly.tieba.post.im.ImStatus
+import com.huanchengfly.tieba.post.im.PrivateMessaging
 import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+import com.huanchengfly.tieba.post.utils.AccountUtil
 import com.huanchengfly.tieba.post.services.NotifyJobService
 import com.huanchengfly.tieba.post.ui.page.destinations.ConversationsPageDestination
+import com.huanchengfly.tieba.post.ui.page.destinations.ChatPageDestination
+import com.huanchengfly.tieba.post.ui.page.destinations.FollowListPageDestination
 import com.huanchengfly.tieba.post.ui.page.destinations.LoginPageDestination
 import com.huanchengfly.tieba.post.ui.page.chat.rememberImSessions
+import com.huanchengfly.tieba.post.ui.page.chat.rememberChatGrouping
+import com.huanchengfly.tieba.post.ui.page.chat.ChatSessionGroups
+import com.huanchengfly.tieba.post.ui.page.chat.ChatSessionItem
+import com.huanchengfly.tieba.post.ui.page.chat.FoldedChatSessionItem
+import com.huanchengfly.tieba.post.ui.page.chat.InboxConversation
+import com.huanchengfly.tieba.post.ui.page.chat.inboxConversations
 import com.huanchengfly.tieba.post.ui.page.main.LocalMainBottomInsets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -35,9 +44,10 @@ import androidx.compose.material.Scaffold
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Reply
+import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,7 +71,6 @@ import com.huanchengfly.tieba.post.api.TiebaApi
 import com.huanchengfly.tieba.post.api.models.MessageListBean
 import com.huanchengfly.tieba.post.dataStore
 import com.huanchengfly.tieba.post.collectPreferenceAsState
-import com.huanchengfly.tieba.post.rememberPreferenceAsState
 import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
 import com.huanchengfly.tieba.post.ui.page.LocalNavigator
 import com.huanchengfly.tieba.post.ui.page.destinations.NotificationsPageDestination
@@ -75,13 +84,6 @@ import kotlinx.coroutines.flow.first
 
 private const val NOTIFY_PREFS = "flux_notify_seen"
 
-/**
- * 消息中心（贴吧式分类入口）。
- *
- * 结构：四类入口（回复我的 / 提到我的 / 赞我的 / 私信），每行显示最新一条摘要；
- * 右侧红点表示该分类有新消息，点进去即视为已读。
- * 「设置 → 使用习惯 → 屏蔽小红点」开启后，红点与底栏角标都不再显示。
- */
 @Composable
 fun NotificationsHubPage() {
     val navigator = LocalNavigator.current
@@ -89,24 +91,32 @@ fun NotificationsHubPage() {
     val uid = LocalAccount.current?.uid.orEmpty()
     val scope = rememberCoroutineScope()
     val sessions = rememberImSessions()
-    val imStatus = if (com.huanchengfly.tieba.post.im.PrivateMessaging.enabled)
-        ImManager.imStatus.collectAsState().value else ImStatus.Idle
     val hideDot by LocalContext.current.dataStore.collectPreferenceAsState(booleanPreferencesKey("hideNotificationDot"), false)
     var entries by remember(uid) { mutableStateOf(HubCache.entries[uid] ?: emptyHubEntries()) }
+    var fansPreview by remember(uid) { mutableStateOf(HubCache.fansPreview[uid]) }
     var loading by remember(uid) { mutableStateOf(false) }
     var loadError by remember(uid) { mutableStateOf(false) }
     var markingRead by remember(uid) { mutableStateOf(false) }
     var refreshTick by remember(uid) { mutableIntStateOf(0) }
+    val grouping = if (PrivateMessaging.enabled && uid.isNotBlank()) {
+        rememberChatGrouping(sessions, uid, refreshTick)
+    } else null
+    val conversations = remember(grouping?.groups, sessions) {
+        (grouping?.groups ?: ChatSessionGroups(sessions, emptyList())).inboxConversations()
+    }
 
     LaunchedEffect(uid, refreshTick) {
         if (uid.isBlank()) return@LaunchedEffect
         if (refreshTick == 0 && System.currentTimeMillis() - (HubCache.loadedAt[uid] ?: 0L) < 60_000L) return@LaunchedEffect
         loading = true
         try {
-            val result = loadHubEntries(context, uid, entries)
+            val result = loadHubEntries(context, uid, entries, fansPreview)
+            if (AccountUtil.currentAccount?.uid != uid) return@LaunchedEffect
             entries = result.entries
+            fansPreview = result.fansPreview
             loadError = result.failed
             HubCache.entries[uid] = entries
+            HubCache.fansPreview[uid] = fansPreview
             if (!result.failed) HubCache.loadedAt[uid] = System.currentTimeMillis()
         } finally { loading = false }
     }
@@ -131,7 +141,7 @@ fun NotificationsHubPage() {
                         scope.launch {
                             try {
                                 for (session in unread) {
-                                    if (com.huanchengfly.tieba.post.utils.AccountUtil.currentAccount?.uid != uid) break
+                                    if (AccountUtil.currentAccount?.uid != uid) break
                                     ImManager.markRead(session.peerUid, session.lastMsgId, uid)
                                 }
                             } finally { markingRead = false }
@@ -147,10 +157,11 @@ fun NotificationsHubPage() {
             )
         }, modifier = Modifier.fillMaxSize()
     ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding),
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)
+            .wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth(),
             contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp + LocalMainBottomInsets.current)) {
             items(entries, key = { it.type.name }) { entry ->
-                HubRow(entry.type.icon(), stringResource(entry.type.titleRes()),
+                HubRow(entry.type.icon(), entry.type.hubTitle(),
                     if (uid.isBlank()) "登录后查看消息" else entry.preview.ifBlank { if (loading) "加载中…" else stringResource(R.string.tip_hub_no_new_message) },
                     entry.hasNew && !hideDot, onClick = {
                         if (uid.isBlank()) navigator.navigate(LoginPageDestination)
@@ -163,19 +174,46 @@ fun NotificationsHubPage() {
                         }
                     })
             }
-            if (com.huanchengfly.tieba.post.im.PrivateMessaging.enabled) item(key = "private_messages") {
-                val latest = sessions.firstOrNull()
+            item(key = "fans") {
                 val preview = when {
-                    uid.isBlank() -> "登录后查看私信"
-                    latest != null -> (latest.peerName.ifBlank { "用户${latest.peerUid}" }) + "：" + latest.lastMsgPreview
-                    imStatus is ImStatus.Error -> "暂未连接，点击查看"
-                    imStatus is ImStatus.Connecting -> "连接中…"
-                    else -> "暂无私信"
+                    uid.isBlank() -> "登录后查看粉丝"
+                    fansPreview != null -> fansPreview.orEmpty()
+                    loading -> "加载中…"
+                    else -> "查看粉丝列表"
                 }
-                HubRow(Icons.AutoMirrored.Rounded.Chat, stringResource(R.string.title_chat), preview,
-                    !hideDot && sessions.any { it.unreadCount > 0 }) {
+                HubRow(Icons.Rounded.Person, "粉丝", preview, false) {
                     if (uid.isBlank()) navigator.navigate(LoginPageDestination)
-                    else navigator.navigate(ConversationsPageDestination())
+                    else navigator.navigate(FollowListPageDestination(fans = true))
+                }
+            }
+            if (PrivateMessaging.enabled && uid.isNotBlank()) {
+                items(conversations, key = { it.key }) { conversation ->
+                    when (conversation) {
+                        is InboxConversation.Direct -> {
+                            val session = conversation.latest
+                            ChatSessionItem(session) {
+                                navigator.navigate(ChatPageDestination(
+                                    peerUid = session.peerUid,
+                                    peerName = session.peerName,
+                                    peerPortrait = session.peerPortrait,
+                                ))
+                            }
+                        }
+                        is InboxConversation.Folded -> {
+                            val latest = conversation.latest
+                            val preview = when {
+                                latest != null -> "${latest.peerName.ifBlank { "用户${latest.peerUid}" }}：${latest.lastMsgPreview}"
+                                grouping?.failed == true -> "关注关系加载失败"
+                                grouping?.groups == null -> "查看陌生人消息"
+                                else -> "暂无陌生人消息"
+                            }
+                            FoldedChatSessionItem(
+                                preview = preview,
+                                lastMsgTime = latest?.lastMsgTime ?: 0L,
+                                unreadCount = conversation.sessions.sumOf { it.unreadCount },
+                            ) { navigator.navigate(ConversationsPageDestination(folded = true)) }
+                        }
+                    }
                 }
             }
             if (loadError) item {
@@ -183,22 +221,6 @@ fun NotificationsHubPage() {
                     style = MaterialTheme.typography.caption, modifier = Modifier.padding(16.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun HubLoadingRow() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "加载中…",
-            style = MaterialTheme.typography.caption,
-            color = ExtendedTheme.colors.textSecondary
-        )
     }
 }
 
@@ -246,7 +268,7 @@ private fun HubRow(
                 style = MaterialTheme.typography.caption,
                 color = ExtendedTheme.colors.textSecondary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
         }
         if (showDot) {
@@ -271,6 +293,7 @@ private data class HubEntry(
 /** 进程内缓存：切回消息 Tab 不重复请求，只有点刷新才重新拉取 */
 private object HubCache {
     val entries = mutableMapOf<String, List<HubEntry>>()
+    val fansPreview = mutableMapOf<String, String?>()
     val loadedAt = mutableMapOf<String, Long>()
 }
 
@@ -281,9 +304,15 @@ internal fun NotificationsType.titleRes(): Int = when (this) {
 }
 
 private fun NotificationsType.icon(): ImageVector = when (this) {
-    NotificationsType.ReplyMe -> Icons.AutoMirrored.Rounded.Reply
+    NotificationsType.ReplyMe -> Icons.Rounded.Comment
     NotificationsType.AtMe -> Icons.Rounded.AlternateEmail
     NotificationsType.AgreeMe -> Icons.Rounded.ThumbUp
+}
+
+private fun NotificationsType.hubTitle(): String = when (this) {
+    NotificationsType.ReplyMe -> "回复"
+    NotificationsType.AtMe -> "@我"
+    NotificationsType.AgreeMe -> "点赞"
 }
 
 private fun seenKey(uid: String, type: NotificationsType) = "seen_${uid}_${type.name}"
@@ -295,19 +324,27 @@ private fun MessageListBean.MessageInfoBean.previewText(): String {
     return listOf(who, body).filter { it.isNotBlank() }.joinToString("：")
 }
 
-private fun emptyHubEntries() = NotificationsType.values().map { HubEntry(it, "", "", false) }
-private data class HubResult(val entries: List<HubEntry>, val failed: Boolean)
+private val hubNotificationOrder = listOf(NotificationsType.AgreeMe, NotificationsType.ReplyMe, NotificationsType.AtMe)
+
+private fun emptyHubEntries() = hubNotificationOrder.map { HubEntry(it, "", "", false) }
+private data class HubResult(val entries: List<HubEntry>, val fansPreview: String?, val failed: Boolean)
 private suspend fun <T> hubRequest(block: suspend () -> T): Result<T> = try { Result.success(block()) }
 catch (e: CancellationException) { throw e }
 catch (e: Exception) { Result.failure(e) }
 
-private suspend fun loadHubEntries(context: Context, uid: String, previous: List<HubEntry>): HubResult = coroutineScope {
+private suspend fun loadHubEntries(
+    context: Context,
+    uid: String,
+    previous: List<HubEntry>,
+    previousFansPreview: String?,
+): HubResult = coroutineScope {
     val prefs = context.getSharedPreferences(NOTIFY_PREFS, Context.MODE_PRIVATE)
     val api = TiebaApi.getInstance()
 
     val replyDeferred = async { hubRequest { api.replyMeFlow().first() } }
     val atDeferred = async { hubRequest { api.atMeFlow().first() } }
     val agreeDeferred = async { hubRequest { api.agreeMeFlow(0L, 20).first() } }
+    val fansDeferred = async { hubRequest { api.fansListFlow(uid = uid.toLong()).first() } }
 
     val replyResult = replyDeferred.await()
     val replyItem = replyResult.getOrNull()?.replyList?.firstOrNull()
@@ -315,6 +352,11 @@ private suspend fun loadHubEntries(context: Context, uid: String, previous: List
     val atItem = atResult.getOrNull()?.atList?.firstOrNull()
     val agreeResult = agreeDeferred.await()
     val agreeItem = agreeResult.getOrNull()?.agreeList?.firstOrNull()
+    val fansResult = fansDeferred.await()
+    val fansPreview = fansResult.getOrNull()?.let { fans ->
+        if (fans.totalFollowNum > 0) "共 ${fans.totalFollowNum} 位粉丝"
+        else if (fans.followList.isEmpty()) "暂无粉丝" else "查看粉丝列表"
+    } ?: previousFansPreview
 
     fun entry(type: NotificationsType, preview: String, key: String): HubEntry {
         val failed = when (type) {
@@ -351,7 +393,8 @@ private suspend fun loadHubEntries(context: Context, uid: String, previous: List
             }.orEmpty(),
             key = agreeItem?.id?.toString().orEmpty()
         ),
-    ), replyResult.isFailure || atResult.isFailure || agreeResult.isFailure)
+    ).sortedBy { hubNotificationOrder.indexOf(it.type) }, fansPreview,
+        replyResult.isFailure || atResult.isFailure || agreeResult.isFailure || fansResult.isFailure)
 }
 
 private fun markAllRead(context: Context, uid: String, entries: List<HubEntry>) {

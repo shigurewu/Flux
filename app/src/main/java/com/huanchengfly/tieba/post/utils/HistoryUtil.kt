@@ -8,19 +8,19 @@ object HistoryUtil {
     const val TYPE_FORUM = 1
     const val TYPE_THREAD = 2
 
-    suspend fun deleteAll() {
-        DatabaseUtil.deleteAllHistory()
+    suspend fun deleteAll(owner: String) {
+        DatabaseUtil.deleteAllHistory(owner)
     }
 
     suspend fun saveHistory(history: History) {
         DatabaseUtil.upsertHistory(history)
     }
 
-    suspend fun getAll(): List<History> = DatabaseUtil.getAllHistory()
+    suspend fun getAll(owner: String): List<History> = DatabaseUtil.getAllHistory(owner)
 
-    suspend fun get(type: Int, page: Int): List<History> =
-        DatabaseUtil.getHistoryByType(type, PAGE_SIZE, page * PAGE_SIZE)
+    suspend fun get(owner: String, type: Int, page: Int): List<History> =
+        DatabaseUtil.getHistoryByType(owner, type, PAGE_SIZE, page * PAGE_SIZE)
 
-    fun getFlow(type: Int, page: Int): Flow<List<History>> =
-        DatabaseUtil.getHistoryFlowByType(type, PAGE_SIZE, page * PAGE_SIZE)
+    fun getFlow(owner: String, type: Int, page: Int): Flow<List<History>> =
+        DatabaseUtil.getHistoryFlowByType(owner, type, PAGE_SIZE, page * PAGE_SIZE)
 }

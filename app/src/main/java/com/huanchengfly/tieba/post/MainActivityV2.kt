@@ -110,6 +110,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.Dialog
 import com.huanchengfly.tieba.post.ui.widgets.compose.DialogNegativeButton
 import com.huanchengfly.tieba.post.ui.widgets.compose.DialogPositiveButton
 import com.huanchengfly.tieba.post.ui.widgets.compose.Sizes
+import com.huanchengfly.tieba.post.ui.widgets.compose.SignInReminderDialog
 import com.huanchengfly.tieba.post.ui.widgets.compose.UpdateDialogHost
 import com.huanchengfly.tieba.post.ui.widgets.compose.rememberDialogState
 import com.huanchengfly.tieba.post.utils.AccountUtil
@@ -674,6 +675,7 @@ class MainActivityV2 : BaseComposeActivity() {
         }
 
         AppSplashOverlay()
+        SignInReminderDialog(lifecycle)
     }
 
     @Composable

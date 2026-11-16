@@ -2,6 +2,7 @@ package com.huanchengfly.tieba.post.im
 
 import android.util.Log
 import com.huanchengfly.tieba.post.App
+import com.huanchengfly.tieba.post.dataStore
 import com.huanchengfly.tieba.post.arch.GlobalEvent
 import com.huanchengfly.tieba.post.arch.GlobalEventFlow
 import com.huanchengfly.tieba.post.models.database.Account
@@ -16,9 +17,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,9 +67,8 @@ object ImManager {
 
     /** 消息组本地拉取游标：groupId → 已拉取的最大 msgId */
     private val gid2LastMsgId = ConcurrentHashMap<Long, Long>()
-    private val privateGroups = java.util.Collections.newSetFromMap(ConcurrentHashMap<Long, Boolean>())
-    private val initialGroupLatest = ConcurrentHashMap<Long, Long>()
-    private val localMessageIds = ImLocalMessageIds()
+    private val pullCheckpoint by lazy { ImPullCheckpoint(App.INSTANCE.dataStore) }
+    @Volatile private var authPrivateHead = 0L
 
     /** 本账号数字 uid */
     @Volatile
@@ -145,10 +147,8 @@ object ImManager {
         myUid = 0L
         connection.close()
         privGid = 0L
+        authPrivateHead = 0L
         gid2LastMsgId.clear()
-        privateGroups.clear()
-        initialGroupLatest.clear()
-        localMessageIds.clear()
         _imStatus.value = ImStatus.Idle
     }
 
@@ -190,6 +190,7 @@ object ImManager {
 
     /** CMD 1001 上线鉴权：上报密钥换取消息组列表，初始化游标与会话 */
     private suspend fun auth(account: Account) {
+        val epoch = generation.get()
         val secKey = connection.newSessionKey()
         val body = connection.request(
             ImConstants.CMD_UPDATE_CLIENT_INFO,
@@ -204,16 +205,35 @@ object ImManager {
             encrypt = false,
         )
         val groups = ImApi.parseUpdateClientInfo(body, account.uid.toLongOrNull() ?: 0L)
-        privGid = groups.firstOrNull { it.groupType == ImConstants.GROUP_TYPE_PRIVATE_MSG }?.groupId ?: 0L
-        check(privGid > 0L) { "服务器未返回私信消息组，暂不能收发私信" }
-        groups.filter { it.groupType == ImConstants.GROUP_TYPE_PRIVATE_MSG && it.groupId > 0 }.forEach {
-            privateGroups.add(it.groupId)
-            // Start from zero once per account session: using the server's latest cursor
-            // discarded messages received before startup, including unknown senders.
-            gid2LastMsgId.putIfAbsent(it.groupId, 0L)
-            initialGroupLatest.putIfAbsent(it.groupId, it.lastMsgId)
+        val privateGroups = groups.filter { it.groupType == ImConstants.GROUP_TYPE_PRIVATE_MSG && it.groupId > 0L }
+        val primary = privateGroups.firstOrNull()
+            ?: error("服务器未返回私信消息组，暂不能收发私信")
+        for (group in privateGroups) {
+            if (gid2LastMsgId.containsKey(group.groupId)) continue
+            val saved = pullCheckpoint.read(account.uid, group.groupId)
+            val local = if (saved == null) DatabaseUtil.getLatestIncomingImId(account.uid, group.groupId) else null
+            val cursor = initialImPullCursor(saved, local, group.lastMsgId)
+            currentCoroutineContext().ensureActive()
+            if (epoch != generation.get()) throw CancellationException("私信账号已切换")
+            if (saved == null) pullCheckpoint.advance(account.uid, group.groupId, cursor)
+            currentCoroutineContext().ensureActive()
+            if (epoch != generation.get()) throw CancellationException("私信账号已切换")
+            gid2LastMsgId.putIfAbsent(group.groupId, cursor)
         }
-        pullMessages()
+        privGid = primary.groupId
+        authPrivateHead = primary.lastMsgId
+        val privateHeads = privateGroups.associate { it.groupId to it.lastMsgId }
+        // Keep startup bounded. Stop immediately on an empty/non-advancing page.
+        var pending = privateHeads.keys.toList()
+        for (attempt in 0 until 10) {
+            if (pending.isEmpty()) break
+            val before = pending.associateWith { gid2LastMsgId[it] ?: 0L }
+            pullMessages(pending)
+            pending = pending.filter { gid ->
+                val after = gid2LastMsgId[gid] ?: 0L
+                after > before.getValue(gid) && after < privateHeads.getValue(gid)
+            }
+        }
         Log.i(TAG, "IM 鉴权成功：privGid=$privGid, groups=${groups.size}")
     }
 
@@ -230,7 +250,6 @@ object ImManager {
             .map { it.first }
             .distinct()
         if (gids.isEmpty()) return
-        privateGroups.addAll(gids)
         try { pullMessages(gids) }
         catch (e: CancellationException) { throw e }
         catch (e: Exception) { Log.w(TAG, "推送拉取失败", e) }
@@ -239,45 +258,49 @@ object ImManager {
     /**
      * 按游标增量拉取并持久化（推送驱动 / 聊天页主动刷新共用）。
      */
-    suspend fun pullMessages(groupIds: List<Long> = privateGroups.toList()) = pullMutex.withLock {
-        if (!PrivateMessaging.enabled) return@withLock
+    suspend fun pullMessages(groupIds: List<Long> = listOfNotNull(privGid.takeIf { it > 0L })) = pullMutex.withLock {
         val owner = accountUid
         val epoch = generation.get()
         val ownId = myUid
         val privateGroup = privGid
         if (owner.isEmpty() || groupIds.isEmpty()) return@withLock
-        // Drain bounded batches so a busy group does not leave other peers permanently unseen.
-        repeat(10) {
-            val pairs = groupIds.distinct().map { it to (gid2LastMsgId[it] ?: 0L) }
-            val body = connection.request(ImConstants.CMD_GET_GROUP_MSG, ImApi.buildGetGroupMsg(UIDUtil.newCUID, pairs))
-            if (epoch != generation.get()) return@withLock
-            var progressed = false
-            for (result in ImApi.parseGetGroupMsg(body)) {
-                val gid = result.groupId.takeIf { it > 0L } ?: privateGroup
-                var maxMsgId = gid2LastMsgId[gid] ?: 0L
-                for (msg in result.messages) {
-                    if (epoch != generation.get()) return@withLock
-                    maxMsgId = maxOf(maxMsgId, msg.msgId)
-                    val isMine = msg.fromUid == ownId
-                    if (msg.msgType == ImConstants.MSG_TYPE_READED && !isMine) {
-                        DatabaseUtil.advanceImPeerRead(owner, msg.fromUid, msg.msgId)
-                    } else if (msg.msgType == ImConstants.MSG_TYPE_TEXT) {
-                        val peer = if (isMine) msg.toUid else msg.fromUid
-                        if (peer <= 0L || msg.msgId <= 0L) continue
-                        DatabaseUtil.storeImMessage(ImMessage(
-                            uid = owner, peerUid = peer, groupId = gid, msgId = msg.msgId,
-                            msgType = msg.msgType, content = msg.content, createTime = msg.createTime,
-                            fromUid = msg.fromUid, isMine = isMine
-                        ), msg.fromName, msg.fromPortrait,
-                            countAsUnread = msg.msgId > (initialGroupLatest[gid] ?: 0L))
-                    }
-                }
-                if (epoch == generation.get()) {
-                    if (maxMsgId > (gid2LastMsgId[gid] ?: 0L)) progressed = true
-                    gid2LastMsgId[gid] = maxMsgId
+        val pairs = groupIds.filter { it > 0L }.distinct().map { gid ->
+            gid to (gid2LastMsgId[gid] ?: pullCheckpoint.read(owner, gid) ?: 0L)
+        }
+        if (pairs.isEmpty() || epoch != generation.get()) return@withLock
+        val requested = pairs.toMap()
+        val body = try {
+            connection.request(ImConstants.CMD_GET_GROUP_MSG, ImApi.buildGetGroupMsg(UIDUtil.newCUID, pairs))
+        } catch (e: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive()
+            throw java.io.IOException("拉取私信超时", e)
+        }
+        if (epoch != generation.get()) return@withLock
+        for (result in ImApi.parseGetGroupMsg(body)) {
+            val gid = result.groupId.takeIf { it > 0L } ?: privateGroup
+            val before = requested[gid] ?: continue
+            var maxMsgId = gid2LastMsgId[gid] ?: before
+            for (msg in result.messages) {
+                if (epoch != generation.get()) return@withLock
+                maxMsgId = maxOf(maxMsgId, msg.msgId)
+                val isMine = msg.fromUid == ownId
+                if (msg.msgType == ImConstants.MSG_TYPE_READED && !isMine) {
+                    DatabaseUtil.advanceImPeerRead(owner, msg.fromUid, msg.msgId)
+                } else if (msg.msgType == ImConstants.MSG_TYPE_TEXT) {
+                    val peer = if (isMine) msg.toUid else msg.fromUid
+                    if (peer <= 0L || msg.msgId <= 0L) continue
+                    DatabaseUtil.storeImMessage(ImMessage(
+                        uid = owner, peerUid = peer, groupId = gid, msgId = msg.msgId,
+                        msgType = msg.msgType, content = msg.content, createTime = msg.createTime,
+                        fromUid = msg.fromUid, isMine = isMine
+                    ), msg.fromName, msg.fromPortrait)
                 }
             }
-            if (!progressed) return@withLock
+            if (epoch == generation.get()) {
+                // Room commits precede the durable cursor; an interrupted save replays safely.
+                if (maxMsgId > before) pullCheckpoint.advance(owner, gid, maxMsgId)
+                if (epoch == generation.get()) gid2LastMsgId[gid] = maxMsgId
+            }
         }
     }
 
@@ -285,14 +308,13 @@ object ImManager {
      * 发送文本私信。返回服务端分配的 msgId；被屏蔽时抛 [ImException]。
      */
     suspend fun sendMessage(toUid: Long, content: String): Long {
-        check(PrivateMessaging.enabled) { "私信功能暂未开放" }
         check(_imStatus.value == ImStatus.Ready && privGid > 0L) { "私信服务未连接" }
         val owner = accountUid
         val ownId = myUid
         val group = privGid
         val epoch = generation.get()
         check(owner.isNotBlank() && owner == AccountUtil.currentAccount?.uid) { "账号正在切换，请稍后重试" }
-        val recordId = localMessageIds.next(toUid, maxOf(gid2LastMsgId[group] ?: 0L, initialGroupLatest[group] ?: 0L))
+        val recordId = maxOf(gid2LastMsgId[group] ?: 0L, authPrivateHead) * 100 + 1
         val body = connection.request(ImConstants.CMD_COMMIT_PERSONAL_MSG,
             ImApi.buildCommitPersonalMsg(toUid, content, recordId))
         val msgId = ImApi.parseCommitPersonalMsg(body)
@@ -309,7 +331,6 @@ object ImManager {
      * 标记某会话已读（对端为 peerUid，读到 msgId），并清零本地未读。
      */
     suspend fun markRead(peerUid: Long, msgId: Long, owner: String = AccountUtil.currentAccount?.uid.orEmpty()) {
-        if (!PrivateMessaging.enabled) return
         if (owner.isEmpty() || msgId <= 0L) return
         val group = privGid
         val epoch = generation.get()

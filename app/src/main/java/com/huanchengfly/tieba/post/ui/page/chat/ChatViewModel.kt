@@ -78,7 +78,7 @@ class ChatViewModel @Inject constructor() : ViewModel() {
                                 if (status == ImStatus.Ready) {
                                     try { ImManager.pullMessages() }
                                     catch (e: CancellationException) { throw e }
-                                    catch (_: Exception) { /* keep local history while reconnecting */ }
+                                    catch (_: Exception) { /* Keep cached messages. */ }
                                 }
                             }
                         }
@@ -98,6 +98,7 @@ class ChatViewModel @Inject constructor() : ViewModel() {
                 }
             }
             is ChatUiIntent.SyncHistory -> {
+                if (!com.huanchengfly.tieba.post.im.PrivateMessaging.historyEnabled) return
                 if (uid.isBlank() || uid != state.value.ownerUid || intent.peerUid != loadedPeer ||
                     state.value.syncingHistory || !state.value.historyHasMore) return
                 val generation = loadGeneration

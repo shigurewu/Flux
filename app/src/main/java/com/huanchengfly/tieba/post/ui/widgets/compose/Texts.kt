@@ -153,12 +153,14 @@ fun EmoticonText(
         )
     )
     val sizePx = calcLineHeightPx(mergedStyle)
-    val emoticonFontSize = (mergedStyle.fontSize.takeIf { it.isSp } ?: 14.sp) * emoticonSize
-    val emoticonPx = with(LocalDensity.current) { emoticonFontSize.toPx() }
+    val inlineFontSize = (mergedStyle.fontSize.takeIf { it.isSp } ?: 14.sp) * emoticonSize
+    // Classic face artwork needs a slightly larger box to read like a system emoji.
+    val classicEmoticonSize = inlineFontSize * 1.2f
+    val emoticonPx = with(LocalDensity.current) { inlineFontSize.toPx() }
     val spacingLineHeight =
         remember(sizePx) { (sizePx + lineSpacing.value.spToPxFloat()).pxToSpFloat().sp }
     val emoticonInlineContent =
-        remember(emoticonFontSize) { EmoticonManager.getEmoticonInlineContent(emoticonFontSize) }
+        remember(classicEmoticonSize) { EmoticonManager.getEmoticonInlineContent(classicEmoticonSize) }
     val emoticonText = remember(text) { text.emoticonString }
     val memeInlineContent = remember(
         emoticonText, emoticonPx, EmoticonManager.memeVersion, memeStickerSize

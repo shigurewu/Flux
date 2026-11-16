@@ -1,5 +1,12 @@
 package com.huanchengfly.tieba.post.utils
 
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.room.withTransaction
 import com.huanchengfly.tieba.post.im.sessionAfterNewMessage
 import com.huanchengfly.tieba.post.App
@@ -17,6 +24,17 @@ import com.huanchengfly.tieba.post.models.database.SearchPostHistory
 import com.huanchengfly.tieba.post.models.database.TopForum
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.Flow
+
+internal fun localDataOwner(uid: String?): String =
+    if (uid.isNullOrBlank()) "guest" else "uid:$uid"
+
+internal fun replyDraftKey(uid: String?, forumId: Long, threadId: Long, postId: Long?, subPostId: Long?): String {
+    val owner = localDataOwner(uid)
+    val targetForum = if (threadId == 0L) forumId else 0L
+    val targetPost = postId ?: 0L
+    val targetSubPost = subPostId ?: 0L
+    return "reply:$owner:$targetForum:$threadId:$targetPost:$targetSubPost"
+}
 
 object DatabaseUtil {
     private val appDatabase: AppDatabase by lazy {
@@ -42,19 +60,19 @@ object DatabaseUtil {
     suspend fun deleteAccount(account: Account) = appDatabase.accountDao().delete(account)
 
     // ── History ─────────────────────────────────────────────────
-    suspend fun getAllHistory(): List<History> = appDatabase.historyDao().getAll()
+    suspend fun getAllHistory(owner: String): List<History> = appDatabase.historyDao().getAll(owner)
 
-    suspend fun getHistoryByType(type: Int, pageSize: Int = 100, offset: Int = 0): List<History> =
-        appDatabase.historyDao().getByType(type, pageSize, offset)
+    suspend fun getHistoryByType(owner: String, type: Int, pageSize: Int = 100, offset: Int = 0): List<History> =
+        appDatabase.historyDao().getByType(owner, type, pageSize, offset)
 
-    fun getHistoryFlowByType(type: Int, pageSize: Int = 100, offset: Int = 0): Flow<List<History>> =
-        appDatabase.historyDao().getFlowByType(type, pageSize, offset)
+    fun getHistoryFlowByType(owner: String, type: Int, pageSize: Int = 100, offset: Int = 0): Flow<List<History>> =
+        appDatabase.historyDao().getFlowByType(owner, type, pageSize, offset)
 
     suspend fun upsertHistory(history: History) = appDatabase.historyDao().upsert(history)
 
-    suspend fun deleteHistoryById(id: Long) = appDatabase.historyDao().deleteById(id)
+    suspend fun deleteHistoryById(owner: String, id: Long) = appDatabase.historyDao().deleteById(owner, id)
 
-    suspend fun deleteAllHistory() = appDatabase.historyDao().deleteAll()
+    suspend fun deleteAllHistory(owner: String) = appDatabase.historyDao().deleteAll(owner)
 
     // ── Block ───────────────────────────────────────────────────
     suspend fun getAllBlocks(): List<Block> = appDatabase.blockDao().getAll()
@@ -66,13 +84,26 @@ object DatabaseUtil {
     suspend fun deleteBlockById(id: Long) = appDatabase.blockDao().deleteById(id)
 
     // ── Draft ───────────────────────────────────────────────────
-    suspend fun getDraft(hash: String): Draft? = appDatabase.draftDao().getByHash(hash)
+    private val draftScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val draftLock = Mutex()
 
-    suspend fun saveDraft(hash: String, content: String) {
-        appDatabase.draftDao().upsert(Draft(hash = hash, content = content))
+    suspend fun getDraft(hash: String): Draft? = draftLock.withLock {
+        appDatabase.draftDao().getByHash(hash)
     }
 
-    suspend fun deleteDraft(hash: String) = appDatabase.draftDao().deleteByHash(hash)
+    // Finish pending edits even if their editor is closed immediately.
+    fun updateDraft(hash: String, content: String) {
+        draftScope.launch {
+            draftLock.withLock {
+                try {
+                    if (content.isEmpty()) appDatabase.draftDao().deleteByHash(hash)
+                    else appDatabase.draftDao().upsert(Draft(hash = hash, content = content))
+                } catch (error: android.database.SQLException) {
+                    Log.e("ReplyDraft", "Could not save reply draft", error)
+                }
+            }
+        }
+    }
 
     // ── TopForum ────────────────────────────────────────────────
     suspend fun getTopForums(): List<TopForum> = appDatabase.topForumDao().getAll()
@@ -84,28 +115,28 @@ object DatabaseUtil {
     suspend fun deleteTopForum(forumId: String) = appDatabase.topForumDao().deleteByForumId(forumId)
 
     // ── SearchHistory ───────────────────────────────────────────
-    suspend fun getAllSearchHistories(): List<SearchHistory> = appDatabase.searchHistoryDao().getAll()
+    suspend fun getAllSearchHistories(owner: String): List<SearchHistory> = appDatabase.searchHistoryDao().getAll(owner)
 
-    suspend fun saveSearchHistory(content: String) {
-        appDatabase.searchHistoryDao().upsert(SearchHistory(content = content))
+    suspend fun saveSearchHistory(owner: String, content: String) {
+        appDatabase.searchHistoryDao().upsert(SearchHistory(owner = owner, content = content))
     }
 
-    suspend fun deleteSearchHistory(id: Long) = appDatabase.searchHistoryDao().deleteById(id)
+    suspend fun deleteSearchHistory(owner: String, id: Long) = appDatabase.searchHistoryDao().deleteById(owner, id)
 
-    suspend fun clearSearchHistory() = appDatabase.searchHistoryDao().deleteAll()
+    suspend fun clearSearchHistory(owner: String) = appDatabase.searchHistoryDao().deleteAll(owner)
 
     // ── SearchPostHistory ───────────────────────────────────────
-    suspend fun getAllSearchPostHistories(): List<SearchPostHistory> = appDatabase.searchPostHistoryDao().getAll()
+    suspend fun getAllSearchPostHistories(owner: String): List<SearchPostHistory> = appDatabase.searchPostHistoryDao().getAll(owner)
 
-    suspend fun saveSearchPostHistory(content: String, forumName: String) {
+    suspend fun saveSearchPostHistory(owner: String, content: String, forumName: String) {
         appDatabase.searchPostHistoryDao().upsert(
-            SearchPostHistory(content = content, forumName = forumName)
+            SearchPostHistory(owner = owner, content = content, forumName = forumName)
         )
     }
 
-    suspend fun deleteSearchPostHistory(id: Long) = appDatabase.searchPostHistoryDao().deleteById(id)
+    suspend fun deleteSearchPostHistory(owner: String, id: Long) = appDatabase.searchPostHistoryDao().deleteById(owner, id)
 
-    suspend fun clearSearchPostHistory() = appDatabase.searchPostHistoryDao().deleteAll()
+    suspend fun clearSearchPostHistory(owner: String) = appDatabase.searchPostHistoryDao().deleteAll(owner)
 
     // ── MemeEmoticon ────────────────────────────────────────────
     fun getMemeEmoticonFlow(uid: String): Flow<List<MemeEmoticon>> =
@@ -167,6 +198,9 @@ object DatabaseUtil {
 
     suspend fun getLatestImMessage(uid: String, peerUid: Long): ImMessage? =
         appDatabase.imMessageDao().getLatestByPeer(uid, peerUid)
+
+    suspend fun getLatestIncomingImId(uid: String, groupId: Long): Long? =
+        appDatabase.imMessageDao().getLatestIncomingId(uid, groupId)
 
     /** Message insertion and unread count are atomic; replayed messages have no effect. */
     suspend fun storeImMessage(message: ImMessage, peerName: String = "", peerPortrait: String = "", countAsUnread: Boolean = true) =

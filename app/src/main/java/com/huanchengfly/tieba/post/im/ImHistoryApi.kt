@@ -21,7 +21,7 @@ internal object ImHistoryApi {
         .build()
 
     suspend fun fetch(owner: String, peer: Long, before: Long): ImHistoryPage {
-        check(PrivateMessaging.enabled) { "私信功能暂未开放" }
+        check(PrivateMessaging.enabled && PrivateMessaging.historyEnabled) { "历史同步暂未开放" }
         val account = AccountUtil.currentAccount?.takeIf { it.uid == owner && it.bduss.isNotBlank() }
             ?: throw CancellationException("账号已切换或退出")
         val credential = account.bduss

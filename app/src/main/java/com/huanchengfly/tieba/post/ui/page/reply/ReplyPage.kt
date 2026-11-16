@@ -1,11 +1,12 @@
 ﻿package com.huanchengfly.tieba.post.ui.page.reply
+import com.huanchengfly.tieba.post.utils.replyDraftKey
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
 import androidx.compose.ui.draw.clip
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.util.Log
 import android.view.View
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -118,7 +119,6 @@ import com.huanchengfly.tieba.post.models.database.Draft
 import com.huanchengfly.tieba.post.models.database.MemeEmoticon
 import com.huanchengfly.tieba.post.pxToDpFloat
 import com.huanchengfly.tieba.post.repository.MemeRepository
-import com.huanchengfly.tieba.post.toMD5
 import com.huanchengfly.tieba.post.toastShort
 import com.huanchengfly.tieba.post.ui.common.theme.compose.ExtendedTheme
 import com.huanchengfly.tieba.post.ui.page.destinations.ReplyPageDestination
@@ -158,7 +158,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.max
@@ -230,9 +229,13 @@ internal fun ReplyPageContent(
     tbs: String? = null,
     isDialog: Boolean = false,
 ) {
-    val hash = remember(forumId, threadId, postId, subPostId) {
-        "${threadId}_${postId}_${subPostId}".toMD5()
+    val activeUid = LocalAccount.current?.uid
+    val draftOwnerUid = remember { activeUid }
+    if (draftOwnerUid != activeUid) {
+        LaunchedEffect(activeUid) { onBack() }
+        return
     }
+    val hash = replyDraftKey(draftOwnerUid, forumId, threadId, postId, subPostId)
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val curTbs = remember(tbs) { tbs ?: AccountUtil.getAccountInfo { this.tbs }.orEmpty() }
@@ -302,20 +305,18 @@ internal fun ReplyPageContent(
 
     val curTextFlow = remember { MutableStateFlow("") }
     val curText by curTextFlow.collectAsState()
-    LaunchedEffect(Unit) {
-        val draft = DatabaseUtil.getDraft(hash)
-        if (draft != null) {
-            setText(draft.content)
+    var draftLoaded by remember(hash) { mutableStateOf(false) }
+    var editedWhileLoading by remember(hash) { mutableStateOf(false) }
+    LaunchedEffect(hash) {
+        try {
+            val draft = DatabaseUtil.getDraft(hash)
+            if (!editedWhileLoading && draft != null) setText(draft.content)
+        } catch (_: android.database.SQLException) {
+            context.toastShort(R.string.message_reply_draft_load_failed)
+        } finally {
+            draftLoaded = true
+            if (editedWhileLoading) DatabaseUtil.updateDraft(hash, curTextFlow.value)
         }
-        curTextFlow
-            .sample(500)
-            .distinctUntilChanged()
-            .collect {
-                Log.i("ReplyPage", "collect: $it")
-                if (!replySuccess) {
-                    DatabaseUtil.saveDraft(hash, it)
-                }
-            }
     }
     val textLength by remember { derivedStateOf { curText.length } }
     val isTextEmpty by remember { derivedStateOf { curText.isEmpty() } }
@@ -344,7 +345,7 @@ internal fun ReplyPageContent(
             context.toastShort(R.string.toast_reply_success, it.expInc)
         }
         coroutineScope.launch {
-            DatabaseUtil.deleteDraft(hash)
+            DatabaseUtil.updateDraft(hash, "")
             onBack()
         }
     }
@@ -527,7 +528,7 @@ internal fun ReplyPageContent(
                     style = MaterialTheme.typography.caption,
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable {
                         editTextView?.setText("")
-                        coroutineScope.launch { DatabaseUtil.deleteDraft(hash) }
+                        DatabaseUtil.updateDraft(hash, "")
                     }.padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
@@ -619,9 +620,10 @@ internal fun ReplyPageContent(
                             }
                             addTextChangedListener(
                                 afterTextChanged = {
-                                    coroutineScope.launch {
-                                        curTextFlow.emit(it?.toString() ?: "")
-                                    }
+                                    val text = it?.toString().orEmpty()
+                                    curTextFlow.value = text
+                                    if (draftLoaded && !replySuccess) DatabaseUtil.updateDraft(hash, text)
+                                    else if (!draftLoaded) editedWhileLoading = true
                                 }
                             )
                             if (waitEditTextToSet) {

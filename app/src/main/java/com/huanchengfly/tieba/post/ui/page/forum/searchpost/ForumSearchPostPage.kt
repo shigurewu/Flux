@@ -1,5 +1,8 @@
 package com.huanchengfly.tieba.post.ui.page.forum.searchpost
 
+import androidx.compose.runtime.key
+import com.huanchengfly.tieba.post.utils.localDataOwner
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -207,8 +210,22 @@ fun ForumSearchPostPage(
     forumId: Long,
     navigator: DestinationsNavigator,
     viewModel: ForumSearchPostViewModel = pageViewModel<ForumSearchPostUiIntent, ForumSearchPostViewModel>(
-        listOf(ForumSearchPostUiIntent.Init)
+        listOf(ForumSearchPostUiIntent.Init),
+        key = "forum_search_" + localDataOwner(LocalAccount.current?.uid),
     ),
+) {
+    key(localDataOwner(LocalAccount.current?.uid)) {
+        ForumSearchPostPageContent(forumName, forumId, navigator, viewModel)
+    }
+}
+
+@OptIn(ExperimentalMaterialApi::class, ExperimentalFoundationApi::class)
+@Composable
+private fun ForumSearchPostPageContent(
+    forumName: String,
+    forumId: Long,
+    navigator: DestinationsNavigator,
+    viewModel: ForumSearchPostViewModel,
 ) {
     val context = LocalContext.current
     val currentKeyword by viewModel.uiState.collectPartialAsState(
@@ -358,7 +375,7 @@ fun ForumSearchPostPage(
                                 }
                             },
                             focusRequester = focusRequester,
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }

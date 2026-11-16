@@ -4,6 +4,10 @@
     <string name="title_explore">动态</string>
     <string name="title_user">我</string>
     <string name="title_search">搜索</string>
+    <string name="hint_search_favorites">搜索收藏</string>
+    <string name="hint_search_favorites_fields">帖子标题、吧名或作者</string>
+    <string name="button_clear_favorites_search">清空搜索</string>
+    <string name="tip_search_favorites_empty">没有找到匹配的收藏</string>
     <string name="hint_search">发现更多</string>
     <string name="hint_search_in_ba">在 %1$s 吧内搜索</string>
     <string name="shortcut_oksign">一键签到</string>
@@ -115,6 +119,8 @@
     <string name="title_forum_name">%1$s吧</string>
     <string name="toast_sign_success">签到成功， 经验 +%1$s。你是今天第 %2$s 个签到的。</string>
     <string name="button_sign_in">签到</string>
+    <string name="title_sign_in_reminder">签到提醒</string>
+    <string name="message_sign_in_reminder">要为关注的贴吧一键签到吗？</string>
     <string name="toast_like_success">关注成功，你是第 %s 个关注本吧的</string>
     <string name="tab_forum_latest">最新</string>
     <string name="tab_forum_hot">热门</string>
@@ -446,8 +452,6 @@
     <string name="title_topic_list_failed">话题榜加载失败</string>
     <string name="tip_load_failed_retry">出错了，请检查网络后重试</string>
     <string name="button_expand_long_image">展开长图</string>
-    <string name="tip_read_resume">上次看到 %1$d 楼</string>
-    <string name="button_read_resume">续看</string>
     <string name="button_clear_draft">清空草稿</string>
     <string name="tip_settings_search_hint">搜索设置</string>
     <string name="tip_settings_search_no_result">没有找到相关设置</string>
@@ -500,15 +504,15 @@
     <string name="connectivity_timeout">连接超时</string>
     <string name="title_no_internet_connectivity">网络找不到了</string>
     <string name="title_api_error">啊哦，出错了</string>
-    <string name="title_unknown_error">发生了一个奇怪的错误…</string>
+    <string name="title_unknown_error">加载失败</string>
     <string name="message_no_internet_connectivity">%s。请检查你的网络连接是否正常</string>
-    <string name="message_unknown_error">哦我的老伙计，我向你保证这真的是一个奇怪的错误……</string>
+    <string name="message_unknown_error">暂时无法加载，请稍后重试。</string>
     <string name="btn_reload">重新加载</string>
     <string name="title_not_logged_in">你尚未登录</string>
     <string name="message_not_logged_in">请登录后继续访问</string>
     <string name="text_all">全部</string>
     <string name="tip_reply_thread">评论一番</string>
-    <string name="btn_load_previous">查看上一页</string>
+    <string name="retry_previous_replies">上一页加载失败，点击重试</string>
     <string name="desc_video">视频</string>
     <string name="tag_video">[视频]</string>
     <string name="message_add_favorite_success">已收藏至第 %d 楼</string>
@@ -763,5 +767,19 @@
     <string name="chat_history_empty_subtitle">发条私信打个招呼吧</string>
     <string name="toast_chat_send_failed">私信发送失败：%1$s</string>
     <string name="toast_chat_not_ready">私信服务连接中，请稍候…</string>
+    <string name="message_clear_browsing_history">清空当前账号的帖子和吧浏览记录？</string>
+    <string name="message_reply_draft_load_failed">草稿加载失败</string>
+    <string name="message_favorites_indexing">已搜索 %1$d 条收藏，正在加载更多…</string>
+    <string name="message_favorites_search_retry">已搜索 %1$d 条收藏，点击重试</string>
+    <string name="message_retry_network">请检查网络连接后重试。</string>
+    <string name="message_retry_server">服务暂时无法完成请求。</string>
+    <string name="action_show_error_details">查看详情</string>
+    <string name="action_hide_error_details">收起详情</string>
+    <string name="message_resume_position_unavailable">暂时无法回到上次阅读的位置，可以继续浏览已加载的评论</string>
+    <string name="thread_resume_nearby">原楼层已不可见，已定位到附近的评论</string>
+    <string name="thread_resume_retry">重试续看</string>
+    <string name="thread_resume_from_start">从头看</string>
+    <string name="thread_resume_updated">评论状态已更新，最新内容可刷新查看</string>
+    <string name="thread_resume_progress">正在恢复阅读位置，已加载 %1$d 页</string>
 </resources>
 

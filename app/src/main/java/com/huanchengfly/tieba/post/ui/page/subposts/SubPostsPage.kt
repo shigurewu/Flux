@@ -108,6 +108,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.Sizes
 import com.huanchengfly.tieba.post.ui.widgets.compose.TitleCentredToolbar
 import com.huanchengfly.tieba.post.ui.widgets.compose.UserHeader
 import com.huanchengfly.tieba.post.ui.widgets.compose.debounceClickable
+import com.huanchengfly.tieba.post.ui.widgets.compose.readingPositionOffset
 import com.huanchengfly.tieba.post.ui.widgets.compose.rememberDialogState
 import com.huanchengfly.tieba.post.ui.widgets.compose.rememberMenuState
 import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreen
@@ -344,7 +345,7 @@ internal fun SubPostsContent(
         }
 
         // 中间偏上的“黄金阅读区”:目标项顶边落在 (viewport - itemHeight) * 0.3 处
-        val desiredTop = ((viewport - item.size) * 0.3f).toInt()
+        val desiredTop = readingPositionOffset(viewport, item.size)
         val delta = item.offset - desiredTop
         Log.e(
             "SubPostsLocate",

@@ -92,7 +92,8 @@ object TiebaUtil {
     }
 
     @JvmStatic
-    fun startSign(context: Context) {
+    @JvmOverloads
+    fun startSign(context: Context, expectedAccountUid: String? = null) {
         context.appPreferences.signDay = Calendar.getInstance()[Calendar.DAY_OF_MONTH]
 //        OKSignService.enqueueWork(
 //            context,
@@ -109,6 +110,7 @@ object TiebaUtil {
             Intent(context, OKSignService::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .setAction(OKSignService.ACTION_START_SIGN)
+                .putExtra(OKSignService.EXTRA_EXPECTED_ACCOUNT_UID, expectedAccountUid)
         )
     }
 

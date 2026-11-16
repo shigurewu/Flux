@@ -146,18 +146,6 @@ fun ChatPage(
                         navigator.navigateUp()
                     }
                 },
-                actions = {
-                    if (displayPortrait.isNotEmpty()) {
-                        AsyncImage(
-                            imageUri = getAvatarUrl(displayPortrait),
-                            contentDescription = displayName,
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .size(32.dp)
-                                .clip(CircleShape),
-                        )
-                    }
-                },
             )
         },
     ) { paddingValues ->
@@ -167,23 +155,25 @@ fun ChatPage(
                 .padding(paddingValues)
                 .imePadding(),
         ) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
-                    enabled = uid.isNotBlank() && !uiState.syncingHistory && uiState.historyHasMore,
-                    onClick = { chatViewModel.send(ChatUiIntent.SyncHistory(peerUid, displayName, displayPortrait)) },
-                ) {
-                    Text(when {
-                        uiState.syncingHistory -> "正在同步…"
-                        !uiState.historyHasMore -> "暂无更多历史"
-                        uiState.historyStarted -> "继续同步更早消息"
-                        else -> "同步历史消息（尝试）"
-                    }, fontSize = 12.sp)
+            if (com.huanchengfly.tieba.post.im.PrivateMessaging.historyEnabled) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        enabled = uid.isNotBlank() && !uiState.syncingHistory && uiState.historyHasMore,
+                        onClick = { chatViewModel.send(ChatUiIntent.SyncHistory(peerUid, displayName, displayPortrait)) },
+                    ) {
+                        Text(when {
+                            uiState.syncingHistory -> "正在同步…"
+                            !uiState.historyHasMore -> "暂无更多历史"
+                            uiState.historyStarted -> "继续同步更早消息"
+                            else -> "同步历史消息（尝试）"
+                        }, fontSize = 12.sp)
+                    }
                 }
-            }
-            if (uiState.historyFeedback.isNotEmpty()) {
-                Text(uiState.historyFeedback, color = ExtendedTheme.colors.textSecondary,
-                    fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                if (uiState.historyFeedback.isNotEmpty()) {
+                    Text(uiState.historyFeedback, color = ExtendedTheme.colors.textSecondary,
+                        fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                }
             }
             if (status != ImStatus.Ready || uid.isBlank()) {
                 Text(

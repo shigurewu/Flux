@@ -125,7 +125,8 @@ fun ConcernPage(
                                             ThreadPageDestination(
                                                 it.threadId,
                                                 it.forumId,
-                                                scrollToReply = true
+                                                scrollToReply = true,
+                                                resumeFromFeed = true,
                                             )
                                         )
                                     },

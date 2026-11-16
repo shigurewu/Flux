@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.main.home
 
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import com.huanchengfly.tieba.post.api.TiebaApi
@@ -15,7 +17,6 @@ import com.huanchengfly.tieba.post.arch.UiState
 import com.huanchengfly.tieba.post.models.database.History
 import com.huanchengfly.tieba.post.models.database.TopForum
 import com.huanchengfly.tieba.post.App
-import com.huanchengfly.tieba.post.utils.AccountUtil
 import com.huanchengfly.tieba.post.utils.DatabaseUtil
 import com.huanchengfly.tieba.post.utils.HistoryUtil
 import com.huanchengfly.tieba.post.utils.FollowedForumsCache
@@ -41,7 +42,7 @@ class HomeViewModel : BaseViewModel<HomeUiIntent, HomePartialChange, HomeUiState
     override fun createInitialState(): HomeUiState = HomeUiState()
 
     override fun createPartialChangeProducer(): PartialChangeProducer<HomeUiIntent, HomePartialChange, HomeUiState> =
-        HomePartialChangeProducer
+        HomePartialChangeProducer(localDataOwner(AccountUtil.currentAccount?.uid))
 
     override fun dispatchEvent(partialChange: HomePartialChange): UiEvent? =
         when (partialChange) {
@@ -50,7 +51,7 @@ class HomeViewModel : BaseViewModel<HomeUiIntent, HomePartialChange, HomeUiState
             else -> null
         }
 
-    object HomePartialChangeProducer :
+    class HomePartialChangeProducer(private val owner: String) :
         PartialChangeProducer<HomeUiIntent, HomePartialChange, HomeUiState> {
         @OptIn(ExperimentalCoroutinesApi::class)
         override fun toPartialChangeFlow(intentFlow: Flow<HomeUiIntent>): Flow<HomePartialChange> {
@@ -72,7 +73,7 @@ class HomeViewModel : BaseViewModel<HomeUiIntent, HomePartialChange, HomeUiState
 
         @Suppress("USELESS_CAST")
         private fun produceRefreshPartialChangeFlow(): Flow<HomePartialChange.Refresh> =
-            HistoryUtil.getFlow(HistoryUtil.TYPE_FORUM, 0).zip(
+            HistoryUtil.getFlow(owner, HistoryUtil.TYPE_FORUM, 0).zip(
                 TiebaApi.getInstance().allForumGuideFlow()
             ) { historyForums, forumGuideBean ->
                 val allLikeForums = forumGuideBean.likeForum
@@ -105,7 +106,7 @@ class HomeViewModel : BaseViewModel<HomeUiIntent, HomePartialChange, HomeUiState
 
         @Suppress("USELESS_CAST")
         private fun produceRefreshHistoryPartialChangeFlow(): Flow<HomePartialChange.RefreshHistory> =
-            HistoryUtil.getFlow(HistoryUtil.TYPE_FORUM, 0)
+            HistoryUtil.getFlow(owner, HistoryUtil.TYPE_FORUM, 0)
                 .map { HomePartialChange.RefreshHistory.Success(it) as HomePartialChange.RefreshHistory }
                 .catch { emit(HomePartialChange.RefreshHistory.Failure(it)) }
 

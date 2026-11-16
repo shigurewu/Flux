@@ -13,7 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Room 迁移回归测试：从 v39 的真实 schema 出发，逐级迁移到 v42，
+ * Room 迁移回归测试：从 v39 的真实 schema 出发，逐级迁移到 v43，
  * 校验表结构、种子数据保留与 IM 新表可用性。
  *
  * 迁移路径必须与 [DatabaseModule.ALL_MIGRATIONS] 完全一致；
@@ -65,13 +65,13 @@ class AppDatabaseMigrationTest {
         db.close()
     }
 
-    /** v39 → v42 全链路：结构通过 Room 校验，种子数据完整保留 */
+    /** v39 → v43 全链路：结构通过 Room 校验，种子数据完整保留 */
     @Test
-    fun migrate39To42_keepsDataAndCreatesImTables() = runBlocking {
-        val dbName = "migr-39-42.db"
+    fun migrate39To43_keepsDataAndQuarantinesLegacyHistory() = runBlocking {
+        val dbName = "migr-39-43.db"
         createV39Database(dbName)
 
-        val db = helper.runMigrationsAndValidate(dbName, 42, true, *DatabaseModule.ALL_MIGRATIONS)
+        val db = helper.runMigrationsAndValidate(dbName, 43, true, *DatabaseModule.ALL_MIGRATIONS)
 
         // account：39 的 sToken 列在 38/39 重建后仍在，数据保留
         db.query("SELECT uid, name, bduss, stoken, nameshow, loadSuccess FROM account").use { c ->
@@ -93,7 +93,7 @@ class AppDatabaseMigrationTest {
         }
 
         // history / block / searchhistory：重建后数据保留
-        db.query("SELECT count(*) FROM history").use { c ->
+        db.query("SELECT count(*) FROM history WHERE owner = 'legacy'").use { c ->
             assertTrue(c.moveToFirst()); assertEquals(1L, c.getLong(0))
         }
         db.query("SELECT keywords, isRegex FROM block").use { c ->
@@ -101,7 +101,7 @@ class AppDatabaseMigrationTest {
             assertEquals("关键词", c.getString(0))
             assertEquals(0L, c.getLong(1))
         }
-        db.query("SELECT content FROM searchhistory").use { c ->
+        db.query("SELECT content FROM searchhistory WHERE owner = 'legacy'").use { c ->
             assertTrue(c.moveToFirst()); assertEquals("贴吧", c.getString(0))
         }
 

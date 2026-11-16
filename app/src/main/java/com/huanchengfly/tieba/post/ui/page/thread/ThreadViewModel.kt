@@ -32,6 +32,7 @@ import com.huanchengfly.tieba.post.arch.PartialChangeProducer
 import com.huanchengfly.tieba.post.arch.UiEvent
 import com.huanchengfly.tieba.post.arch.UiIntent
 import com.huanchengfly.tieba.post.arch.UiState
+import com.huanchengfly.tieba.post.arch.exhaustMap
 import com.huanchengfly.tieba.post.arch.wrapImmutable
 import com.huanchengfly.tieba.post.removeAt
 import com.huanchengfly.tieba.post.repository.EmptyDataException
@@ -43,18 +44,71 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flatMapConcat
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import javax.inject.Inject
 
+internal fun previousReplyRequestPage(currentPage: Int, totalPages: Int, sortType: Int): Int {
+    val page = if (sortType == ThreadSortType.SORT_TYPE_DESC) totalPages - currentPage + 2
+    else currentPage - 1
+    return page.coerceIn(1, totalPages.coerceAtLeast(1))
+}
+
+internal suspend fun collectRepliesThroughTarget(
+    firstPage: ThreadPartialChange.Load.Success,
+    targetPostId: Long,
+    targetFloor: Int = 0,
+    fetchNext: suspend (ThreadPartialChange.Load.Success, Set<Long>) -> ThreadPartialChange.Load.Success,
+): ThreadPartialChange.Load.Success {
+    val replies = linkedMapOf<Long, PostItemData>()
+    fun append(page: ThreadPartialChange.Load.Success) {
+        page.data.forEach { reply -> replies.putIfAbsent(reply.post.get { id }, reply) }
+    }
+
+    var current = firstPage
+    append(current)
+    while (!replies.containsKey(targetPostId) && current.hasMore) {
+        val next = try {
+            fetchNext(current, replies.keys)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            break
+        }
+        if (next.currentPage != current.currentPage + 1 ||
+            next.data.none { !replies.containsKey(it.post.get { id }) }
+        ) break
+        append(next)
+        current = next
+    }
+    val reachedTarget = replies.containsKey(targetPostId)
+    val fallback = if (!reachedTarget && !current.hasMore && targetFloor >= 2) {
+        replies.values.minByOrNull { kotlin.math.abs(it.post.get { floor }.toLong() - targetFloor) }
+    } else null
+    return current.copy(
+        data = replies.values.toList(),
+        firstPost = firstPage.firstPost ?: current.firstPost,
+        firstPostContentRenders = firstPage.firstPostContentRenders ?: current.firstPostContentRenders,
+        currentPageMin = firstPage.currentPageMin,
+        hasPrevious = false,
+        postId = if (reachedTarget) targetPostId else fallback?.post?.get { id } ?: 0L,
+        resumeInterrupted = !reachedTarget && current.hasMore,
+        resumeUnavailable = !reachedTarget,
+    )
+}
+
 private fun ThreadInfo.getNextPagePostId(
-    postIds: List<Long> = emptyList(),
+    postIds: Collection<Long> = emptyList(),
     sortType: Int = ThreadSortType.SORT_TYPE_DEFAULT
 ): Long {
     val fetchedPostIds = pids.split(",")
@@ -67,25 +121,61 @@ private fun ThreadInfo.getNextPagePostId(
     return if (nextPostIds.isNotEmpty()) nextPostIds.last() else 0
 }
 
+private data class ResumeCacheKey(val account: String, val thread: Long, val sort: Int)
+private val resumeCache by lazy {
+    object : android.util.LruCache<ResumeCacheKey, Pair<Long, ThreadPartialChange.Load.Success>>(16 * 1024 * 1024) {
+        override fun sizeOf(key: ResumeCacheKey, value: Pair<Long, ThreadPartialChange.Load.Success>): Int =
+            (4096L + value.second.data.sumOf { it.post.get { Post.ADAPTER.encodedSize(this).toLong() * 4 + 1024 } })
+                .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+}
+
 @Stable
 @HiltViewModel
 class ThreadViewModel @Inject constructor() :
     BaseViewModel<ThreadUiIntent, ThreadPartialChange, ThreadUiState, ThreadUiEvent>() {
     override fun createInitialState(): ThreadUiState = ThreadUiState()
 
+    internal fun cacheReadComments(account: String, threadId: Long) {
+        val state = uiState.value
+        if (state.seeLz || state.isError || state.isRefreshing || state.hasPrevious ||
+            state.currentPageMin != 1 || state.data.isEmpty() || state.resumeFromCache
+        ) return
+        val author = state.author?.get { this } ?: return
+        val thread = state.threadInfo?.get { this } ?: return
+        val forum = state.forum?.get { this } ?: return
+        val anti = state.anti?.get { this } ?: return
+        val result = ThreadPartialChange.Load.Success(
+            title = state.title, author = author, user = state.user.get { this },
+            firstPost = state.firstPost?.get { this }, data = state.data,
+            threadInfo = thread, forum = forum, anti = anti,
+            currentPage = state.currentPageMax, totalPage = state.totalPage, hasMore = state.hasMore,
+            nextPagePostId = state.nextPagePostId, hasPrevious = false,
+            firstPostContentRenders = state.firstPostContentRenders,
+            sortType = state.sortType, currentPageMin = state.currentPageMin,
+        )
+        resumeCache.put(ResumeCacheKey(account, threadId, state.sortType),
+            android.os.SystemClock.elapsedRealtime() to result)
+    }
+
     override fun createPartialChangeProducer(): PartialChangeProducer<ThreadUiIntent, ThreadPartialChange, ThreadUiState> =
         ThreadPartialChangeProducer
 
     override fun dispatchEvent(partialChange: ThreadPartialChange): UiEvent? {
         return when (partialChange) {
-            is ThreadPartialChange.Init.Success -> if (partialChange.postId != 0L) ThreadUiEvent.ScrollToFirstReply else null
-            ThreadPartialChange.LoadPrevious.Start -> ThreadUiEvent.ScrollToFirstReply
             is ThreadPartialChange.AddFavorite.Success -> ThreadUiEvent.AddFavoriteSuccess(
                 partialChange.floor
             )
 
             ThreadPartialChange.RemoveFavorite.Success -> ThreadUiEvent.RemoveFavoriteSuccess
-            is ThreadPartialChange.Load.Success -> ThreadUiEvent.LoadSuccess(partialChange.currentPage)
+            is ThreadPartialChange.Load.Success -> ThreadUiEvent.LoadSuccess(
+                page = partialChange.currentPage,
+                targetIndex = if (partialChange.postId > 0L) {
+                    partialChange.data.indexOfFirst { it.post.get { id } == partialChange.postId }
+                } else -1,
+                resumeUnavailable = partialChange.resumeUnavailable,
+                resumeInterrupted = partialChange.resumeInterrupted,
+            )
 
             is ThreadPartialChange.LoadMyLatestReply.Success -> ThreadUiEvent.ScrollToLatestReply.takeIf {
                 partialChange.hasNewPost
@@ -116,13 +206,13 @@ class ThreadViewModel @Inject constructor() :
                 intentFlow.filterIsInstance<ThreadUiIntent.Init>()
                     .flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<ThreadUiIntent.Load>()
-                    .flatMapConcat { it.producePartialChange() },
+                    .flatMapLatest { it.producePartialChange() },
                 intentFlow.filterIsInstance<ThreadUiIntent.LoadMore>()
                     .flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<ThreadUiIntent.LoadFirstPage>()
                     .flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<ThreadUiIntent.LoadPrevious>()
-                    .flatMapConcat { it.producePartialChange() },
+                    .exhaustMap { it.producePartialChange() },
                 intentFlow.filterIsInstance<ThreadUiIntent.LoadLatestPosts>()
                     .flatMapConcat { it.producePartialChange() },
                 intentFlow.filterIsInstance<ThreadUiIntent.LoadMyLatestReply>()
@@ -159,45 +249,103 @@ class ThreadViewModel @Inject constructor() :
             ).catch { emit(ThreadPartialChange.Init.Failure(it)) }
 
         fun ThreadUiIntent.Load.producePartialChange(): Flow<ThreadPartialChange.Load> =
-            PbPageRepository
-                .pbPage(
-                    threadId, page, postId, forumId, seeLz, sortType,
-                    from = from.takeIf { it == ThreadPageFrom.FROM_STORE }.orEmpty()
-                )
-                .map<PbPageResponse, ThreadPartialChange.Load> { response ->
-                    if (response.data_?.page == null
-                        || response.data_.thread?.author == null
-                        || response.data_.forum == null
-                        || response.data_.anti == null
-                    ) throw TiebaUnknownException
-                    val postList = response.data_.post_list
-                    val firstPost = response.data_.first_floor_post
-                    val notFirstPosts = postList.filterNot { it.floor == 1 }
-                    ThreadPartialChange.Load.Success(
-                        response.data_.thread.title,
-                        response.data_.thread.author,
-                        response.data_.user ?: User(),
-                        firstPost,
-                        notFirstPosts.map { PostItemData(it.wrapImmutable()) },
-                        response.data_.thread,
-                        response.data_.forum,
-                        response.data_.anti,
-                        response.data_.page.current_page,
-                        response.data_.page.new_total_page,
-                        response.data_.page.has_more != 0,
-                        response.data_.thread.getNextPagePostId(
-                            postList.map { it.id },
-                            sortType
-                        ),
-                        response.data_.page.has_prev != 0,
-                        firstPost?.contentRenders,
-                        postId,
-                        seeLz,
-                        sortType,
-                    )
+            flow<ThreadPartialChange.Load> {
+                if (loadThroughResumeTarget && postId > 0L) {
+                    val key = resumeAccount?.let { ResumeCacheKey(it, threadId, sortType) }
+                    val cached = key?.let(resumeCache::get)?.takeIf { (loadedAt, result) ->
+                        android.os.SystemClock.elapsedRealtime() - loadedAt < 600_000
+                    }
+                    val servedFromCache = cached != null && !forceResumeReload &&
+                        cached.second.data.any { it.post.get { id } == postId }
+                    if (servedFromCache) {
+                        emit(checkNotNull(cached).second.copy(postId = postId, fromResumeCache = true))
+                    }
+                    try {
+                        val partial = cached?.second?.takeIf { forceResumeReload && it.resumeInterrupted }
+                        val result = fetchResume(partial) { pages ->
+                            if (!servedFromCache) emit(ThreadPartialChange.Load.ResumeProgress(pages))
+                        }
+                        if (key != null) {
+                            if (!result.resumeUnavailable || result.resumeInterrupted) {
+                                resumeCache.put(key, android.os.SystemClock.elapsedRealtime() to result)
+                            } else if (!result.resumeInterrupted) {
+                                resumeCache.remove(key)
+                            }
+                        }
+                        if (!servedFromCache) emit(result)
+                        else if (!result.resumeInterrupted) emit(ThreadPartialChange.Load.BackgroundUpdate(result))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        if (!servedFromCache) throw error
+                    }
+                } else {
+                    emit(toLoadSuccess(fetchPage(page, postId), targetPostId = postId))
                 }
-                .onStart { emit(ThreadPartialChange.Load.Start) }
+            }.onStart { emit(ThreadPartialChange.Load.Start) }
                 .catch { emit(ThreadPartialChange.Load.Failure(it)) }
+
+        private suspend fun ThreadUiIntent.Load.fetchResume(
+            partial: ThreadPartialChange.Load.Success? = null,
+            onProgress: suspend (Int) -> Unit,
+        ): ThreadPartialChange.Load.Success {
+            onProgress(0)
+            val firstPage = partial ?: toLoadSuccess(fetchPage(page = 0, anchor = 0L), targetPostId = 0L)
+            check(firstPage.currentPageMin <= 1) { "The thread did not load from its first page" }
+            onProgress(firstPage.currentPage)
+            return collectRepliesThroughTarget(firstPage, postId, resumeFloor) { current, loadedPostIds ->
+                val requestPage = if (sortType == ThreadSortType.SORT_TYPE_DESC) {
+                    current.totalPage - current.currentPage
+                } else current.currentPage + 1
+                toLoadSuccess(
+                    fetchPage(requestPage.coerceAtLeast(1), current.nextPagePostId),
+                    targetPostId = 0L,
+                    loadedPostIds = loadedPostIds,
+                ).also { next ->
+                    if (next.currentPage == current.currentPage + 1 && next.data.isNotEmpty()) {
+                        onProgress(next.currentPage)
+                    }
+                }
+            }
+        }
+
+        private suspend fun ThreadUiIntent.Load.fetchPage(page: Int, anchor: Long): PbPageResponse =
+            PbPageRepository.pbPage(
+                threadId, page, anchor, forumId, seeLz, sortType,
+                from = from.takeIf { it == ThreadPageFrom.FROM_STORE }.orEmpty(),
+            ).first()
+
+        private fun ThreadUiIntent.Load.toLoadSuccess(
+            response: PbPageResponse,
+            targetPostId: Long,
+            loadedPostIds: Set<Long> = emptySet(),
+        ): ThreadPartialChange.Load.Success {
+            val payload = response.data_ ?: throw TiebaUnknownException
+            val pageInfo = payload.page ?: throw TiebaUnknownException
+            val thread = payload.thread ?: throw TiebaUnknownException
+            val author = thread.author ?: throw TiebaUnknownException
+            val firstPost = payload.first_floor_post
+            val pagePostIds = payload.post_list.map { it.id }
+            return ThreadPartialChange.Load.Success(
+                title = thread.title,
+                author = author,
+                user = payload.user ?: User(),
+                firstPost = firstPost,
+                data = payload.post_list.filterNot { it.floor == 1 }.map { PostItemData(it.wrapImmutable()) },
+                threadInfo = thread,
+                forum = payload.forum ?: throw TiebaUnknownException,
+                anti = payload.anti ?: throw TiebaUnknownException,
+                currentPage = pageInfo.current_page,
+                totalPage = pageInfo.new_total_page,
+                hasMore = pageInfo.has_more != 0,
+                nextPagePostId = thread.getNextPagePostId(loadedPostIds + pagePostIds, sortType),
+                hasPrevious = pageInfo.has_prev != 0 || pageInfo.current_page > 1,
+                firstPostContentRenders = firstPost?.contentRenders,
+                postId = targetPostId,
+                seeLz = seeLz,
+                sortType = sortType,
+            )
+        }
 
         fun ThreadUiIntent.LoadFirstPage.producePartialChange(): Flow<ThreadPartialChange.LoadFirstPage> =
             PbPageRepository
@@ -267,9 +415,9 @@ class ThreadViewModel @Inject constructor() :
                     )
                 }
 
-        fun ThreadUiIntent.LoadPrevious.producePartialChange(): Flow<ThreadPartialChange.LoadPrevious> =
-            PbPageRepository
-                .pbPage(threadId, page, postId, forumId, seeLz, sortType, back = true)
+        fun ThreadUiIntent.LoadPrevious.producePartialChange(): Flow<ThreadPartialChange.LoadPrevious> {
+            fun request(anchor: Long, back: Boolean) = PbPageRepository
+                .pbPage(threadId, page, anchor, forumId, seeLz, sortType, back = back)
                 .map<PbPageResponse, ThreadPartialChange.LoadPrevious> { response ->
                     if (response.data_?.page == null
                         || response.data_.thread?.author == null
@@ -278,24 +426,27 @@ class ThreadViewModel @Inject constructor() :
                     ) throw TiebaUnknownException
                     val postList = response.data_.post_list
                     val posts = postList.filterNot { it.floor == 1 || postIds.contains(it.id) }
+                    val hasPrevious = response.data_.page.current_page > 1 || response.data_.page.has_prev != 0
+                    if ((expectedPage > 0 && response.data_.page.current_page != expectedPage) ||
+                        (posts.isEmpty() && hasPrevious)
+                    ) throw TiebaUnknownException
                     ThreadPartialChange.LoadPrevious.Success(
+                        this,
                         response.data_.thread.author,
                         posts.map { PostItemData(it.wrapImmutable()) },
                         response.data_.thread,
                         response.data_.page.current_page,
                         response.data_.page.new_total_page,
-                        response.data_.page.has_prev != 0,
+                        hasPrevious,
                     )
                 }
-                .onStart { emit(ThreadPartialChange.LoadPrevious.Start) }
+            return request(postId, back = true)
+                .catch { emit(request(0L, back = false).first()) }
+                .onStart { emit(ThreadPartialChange.LoadPrevious.Start(this@producePartialChange)) }
                 .catch {
-                    emit(
-                        ThreadPartialChange.LoadPrevious.Failure(
-                            it.getErrorCode(),
-                            it.getErrorMessage()
-                        )
-                    )
+                    emit(ThreadPartialChange.LoadPrevious.Failure(this@producePartialChange))
                 }
+        }
 
         fun ThreadUiIntent.LoadLatestPosts.producePartialChange(): Flow<ThreadPartialChange.LoadLatestPosts> =
             PbPageRepository
@@ -530,7 +681,11 @@ sealed interface ThreadUiIntent : UiIntent {
         val forumId: Long? = null,
         val seeLz: Boolean = false,
         val sortType: Int = 0,
-        val from: String = ""
+        val from: String = "",
+        val loadThroughResumeTarget: Boolean = false,
+        val resumeFloor: Int = 0,
+        val resumeAccount: String? = null,
+        val forceResumeReload: Boolean = false,
     ) : ThreadUiIntent
 
     data class LoadFirstPage(
@@ -558,6 +713,7 @@ sealed interface ThreadUiIntent : UiIntent {
         val seeLz: Boolean = false,
         val sortType: Int = 0,
         val postIds: List<Long> = emptyList(),
+        val expectedPage: Int = 0,
     ) : ThreadUiIntent
 
     /**
@@ -683,10 +839,30 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
 
     sealed class Load : ThreadPartialChange {
         override fun reduce(oldState: ThreadUiState): ThreadUiState = when (this) {
-            is Start -> oldState.copy(isRefreshing = true)
+            is Start -> oldState.copy(isRefreshing = true, resumeLoadedPages = null)
+            is ResumeProgress -> oldState.copy(resumeLoadedPages = pages)
+            is BackgroundUpdate -> {
+                if (oldState.isRefreshing || oldState.sortType != result.sortType || oldState.seeLz != result.seeLz ||
+                    oldState.threadInfo?.get { id } != result.threadInfo.id
+                ) oldState else {
+                    val fresh = result.data.associateBy { it.post.get { id } }
+                    oldState.copy(
+                        data = oldState.data.map { old ->
+                            val updated = fresh[old.post.get { id }]
+                            if (updated != null) updated else old
+                        }.toImmutableList(),
+                        backgroundCommentsUpdated = true,
+                    )
+                }
+            }
 
             is Success -> oldState.copy(
                 isRefreshing = false,
+                resumeLoadedPages = null,
+                resumeFromCache = fromResumeCache,
+                backgroundCommentsUpdated = false,
+                isLoadingPrevious = false,
+                loadPreviousFailed = false,
                 isError = false,
                 error = null,
                 title = title,
@@ -697,7 +873,7 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
                 firstPost = if (firstPost != null) wrapImmutable(firstPost) else oldState.firstPost,
                 forum = wrapImmutable(forum),
                 anti = wrapImmutable(anti),
-                currentPageMin = currentPage,
+                currentPageMin = currentPageMin,
                 currentPageMax = currentPage,
                 totalPage = totalPage,
                 hasMore = hasMore,
@@ -720,6 +896,9 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
 
         data object Start : Load()
 
+        data class ResumeProgress(val pages: Int) : Load()
+        data class BackgroundUpdate(val result: Success) : Load()
+
         data class Success(
             val title: String,
             val author: User,
@@ -738,6 +917,10 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
             val postId: Long = 0,
             val seeLz: Boolean = false,
             val sortType: Int = 0,
+            val currentPageMin: Int = currentPage,
+            val resumeUnavailable: Boolean = false,
+            val resumeInterrupted: Boolean = false,
+            val fromResumeCache: Boolean = false,
         ) : Load()
 
         data class Failure(
@@ -750,6 +933,8 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
             is Start -> oldState.copy(isRefreshing = true)
             is Success -> oldState.copy(
                 isRefreshing = false,
+                isLoadingPrevious = false,
+                loadPreviousFailed = false,
                 isError = false,
                 error = null,
                 title = title,
@@ -840,37 +1025,43 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
         ) : LoadMore()
     }
 
-    sealed class LoadPrevious : ThreadPartialChange {
-        override fun reduce(oldState: ThreadUiState): ThreadUiState = when (this) {
-            is Start -> oldState.copy(isRefreshing = true)
-            is Success -> oldState.copy(
-                isRefreshing = false,
-                author = wrapImmutable(author),
-                data = (data + oldState.data).toImmutableList(),
-                threadInfo = threadInfo.wrapImmutable(),
-                currentPageMin = currentPage,
-                totalPage = totalPage,
-                hasPrevious = hasPrevious,
-            )
+    sealed class LoadPrevious(private val request: ThreadUiIntent.LoadPrevious) : ThreadPartialChange {
+        override fun reduce(oldState: ThreadUiState): ThreadUiState {
+            if (!oldState.hasPrevious || oldState.isRefreshing || oldState.sortType != request.sortType ||
+                oldState.seeLz != request.seeLz ||
+                oldState.data.firstOrNull()?.post?.get { id } != request.postId
+            ) return oldState.copy(isLoadingPrevious = false)
+            return when (this) {
+                is Start -> oldState.copy(isLoadingPrevious = true, loadPreviousFailed = false)
+                is Success -> oldState.copy(
+                    isLoadingPrevious = false,
+                    author = wrapImmutable(author),
+                    data = (data + oldState.data).distinctBy { it.post.get { id } }.toImmutableList(),
+                    threadInfo = threadInfo.wrapImmutable(),
+                    currentPageMin = currentPage,
+                    totalPage = totalPage,
+                    hasPrevious = hasPrevious,
+                )
 
-            is Failure -> oldState.copy(isRefreshing = false)
+                is Failure -> oldState.copy(isLoadingPrevious = false, loadPreviousFailed = true)
+            }
         }
 
-        data object Start : LoadPrevious()
+        data class Start(val intent: ThreadUiIntent.LoadPrevious) : LoadPrevious(intent)
 
         data class Success(
+            val intent: ThreadUiIntent.LoadPrevious,
             val author: User,
             val data: List<PostItemData>,
             val threadInfo: ThreadInfo,
             val currentPage: Int,
             val totalPage: Int,
             val hasPrevious: Boolean,
-        ) : LoadPrevious()
+        ) : LoadPrevious(intent)
 
         data class Failure(
-            val errorCode: Int,
-            val errorMessage: String,
-        ) : LoadPrevious()
+            val intent: ThreadUiIntent.LoadPrevious,
+        ) : LoadPrevious(intent)
     }
 
     sealed class LoadLatestPosts : ThreadPartialChange {
@@ -1232,7 +1423,12 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
 
 data class ThreadUiState(
     val isRefreshing: Boolean = false,
+    val resumeLoadedPages: Int? = null,
+    val resumeFromCache: Boolean = false,
+    val backgroundCommentsUpdated: Boolean = false,
     val isLoadingMore: Boolean = false,
+    val isLoadingPrevious: Boolean = false,
+    val loadPreviousFailed: Boolean = false,
     val isLoadingLatestReply: Boolean = false,
     val isError: Boolean = false,
     val error: ImmutableHolder<Throwable>? = null,
@@ -1264,12 +1460,13 @@ data class ThreadUiState(
 ) : UiState
 
 sealed interface ThreadUiEvent : UiEvent {
-    data object ScrollToFirstReply : ThreadUiEvent
-
     data object ScrollToLatestReply : ThreadUiEvent
 
     data class LoadSuccess(
-        val page: Int
+        val page: Int,
+        val targetIndex: Int,
+        val resumeUnavailable: Boolean = false,
+        val resumeInterrupted: Boolean = false,
     ) : ThreadUiEvent
 
     data class AddFavoriteSuccess(val floor: Int) : ThreadUiEvent

@@ -29,7 +29,7 @@ import dagger.hilt.components.SingletonComponent
         ImSession::class,
         ImMessage::class,
     ],
-    version = 42,
+    version = 43,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

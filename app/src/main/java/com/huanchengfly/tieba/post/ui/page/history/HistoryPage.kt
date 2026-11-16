@@ -1,5 +1,12 @@
 package com.huanchengfly.tieba.post.ui.page.history
 
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
+import com.huanchengfly.tieba.post.utils.localDataOwner
+import com.huanchengfly.tieba.post.ui.widgets.compose.ConfirmDialog
+import com.huanchengfly.tieba.post.ui.widgets.compose.rememberDialogState
+import kotlinx.coroutines.CancellationException
+import androidx.compose.runtime.key
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -51,111 +58,121 @@ fun HistoryPage(
     navigator: DestinationsNavigator
 ) {
     val pagerState = rememberPagerState { 2 }
-    val coroutineScope = rememberCoroutineScope()
-    val scaffoldState = rememberScaffoldState()
-
-    val context = LocalContext.current
-
-    MyScaffold(
-        backgroundColor = Color.Transparent,
-        scaffoldState = scaffoldState,
-        topBar = {
-            TitleCentredToolbar(
-                title = {
-                    Text(
-                        text = stringResource(id = R.string.title_history),
-                        fontWeight = FontWeight.Bold, style = MaterialTheme.typography.h6
-                    )
-                },
-                navigationIcon = {
-                    BackNavigationIcon(onBackPressed = { navigator.navigateUp() })
-                },
-                actions = {
-                    IconButton(onClick = {
-                        coroutineScope.launch {
-                            HistoryUtil.deleteAll()
+    val owner = localDataOwner(LocalAccount.current?.uid)
+    key(owner) {
+        val coroutineScope = rememberCoroutineScope()
+        val scaffoldState = rememberScaffoldState()
+        val context = LocalContext.current
+        val confirmClear = rememberDialogState()
+        ConfirmDialog(
+            dialogState = confirmClear,
+            title = { Text(stringResource(R.string.title_history_delete)) },
+            content = { Text(stringResource(R.string.message_clear_browsing_history)) },
+            onConfirm = {
+                if (localDataOwner(AccountUtil.currentAccount?.uid) == owner) coroutineScope.launch {
+                    try {
+                        HistoryUtil.deleteAll(owner)
+                        if (localDataOwner(AccountUtil.currentAccount?.uid) == owner) {
                             emitGlobalEvent(HistoryListUiEvent.DeleteAll)
-                            launch {
-                                scaffoldState.snackbarHostState.showSnackbar(
-                                    context.getString(
-                                        R.string.toast_clear_success
-                                    )
-                                )
-                            }
+                            scaffoldState.snackbarHostState.showSnackbar(context.getString(R.string.toast_clear_success))
                         }
-                    }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Delete,
-                            contentDescription = stringResource(id = R.string.title_history_delete),
-                            tint = ExtendedTheme.colors.onTopBar
-                        )
-                    }
-                },
-                content = {
-                    TabRow(
-                        selectedTabIndex = pagerState.currentPage,
-                        indicator = { tabPositions ->
-                            PagerTabIndicator(
-                                pagerState = pagerState,
-                                tabPositions = tabPositions
-                            )
-                        },
-                        divider = {},
-                        backgroundColor = Color.Transparent,
-                        contentColor = ExtendedTheme.colors.primary,
-                        modifier = Modifier
-                            .width(100.dp * 2)
-                            .align(Alignment.CenterHorizontally)
-                    ) {
-                        Tab(
-                            text = {
-                                Text(
-                                    text = stringResource(id = R.string.title_history_thread),
-                                    fontSize = 13.sp
-                                )
-                            },
-                            selected = pagerState.currentPage == 0,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
-                                }
-                            },
-                            selectedContentColor = ExtendedTheme.colors.onTopBar,
-                            unselectedContentColor = ExtendedTheme.colors.onTopBarSecondary
-                        )
-                        Tab(
-                            text = {
-                                Text(
-                                    text = stringResource(id = R.string.title_history_forum),
-                                    fontSize = 13.sp
-                                )
-                            },
-                            selected = pagerState.currentPage == 1,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(1)
-                                }
-                            },
-                            selectedContentColor = ExtendedTheme.colors.onTopBar,
-                            unselectedContentColor = ExtendedTheme.colors.onTopBarSecondary
-                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        scaffoldState.snackbarHostState.showSnackbar(context.getString(R.string.toast_clear_failure, error.localizedMessage.orEmpty()))
                     }
                 }
-            )
-        }
-    ) {
-        ProvideNavigator(navigator = navigator) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                key = { it },
-                verticalAlignment = Alignment.Top,
-                userScrollEnabled = true,
-            ) {
-                if (it == 0) {
-                    HistoryListPage(type = HistoryUtil.TYPE_THREAD)
-                } else {
-                    HistoryListPage(type = HistoryUtil.TYPE_FORUM)
+            },
+        )
+        MyScaffold(
+            backgroundColor = Color.Transparent,
+            scaffoldState = scaffoldState,
+            topBar = {
+                TitleCentredToolbar(
+                    title = {
+                        Text(
+                            text = stringResource(id = R.string.title_history),
+                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.h6
+                        )
+                    },
+                    navigationIcon = {
+                        BackNavigationIcon(onBackPressed = { navigator.navigateUp() })
+                    },
+                    actions = {
+                        IconButton(onClick = { confirmClear.show() }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = stringResource(id = R.string.title_history_delete),
+                                tint = ExtendedTheme.colors.onTopBar
+                            )
+                        }
+                    },
+                    content = {
+                        TabRow(
+                            selectedTabIndex = pagerState.currentPage,
+                            indicator = { tabPositions ->
+                                PagerTabIndicator(
+                                    pagerState = pagerState,
+                                    tabPositions = tabPositions
+                                )
+                            },
+                            divider = {},
+                            backgroundColor = Color.Transparent,
+                            contentColor = ExtendedTheme.colors.primary,
+                            modifier = Modifier
+                                .width(100.dp * 2)
+                                .align(Alignment.CenterHorizontally)
+                        ) {
+                            Tab(
+                                text = {
+                                    Text(
+                                        text = stringResource(id = R.string.title_history_thread),
+                                        fontSize = 13.sp
+                                    )
+                                },
+                                selected = pagerState.currentPage == 0,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(0)
+                                    }
+                                },
+                                selectedContentColor = ExtendedTheme.colors.onTopBar,
+                                unselectedContentColor = ExtendedTheme.colors.onTopBarSecondary
+                            )
+                            Tab(
+                                text = {
+                                    Text(
+                                        text = stringResource(id = R.string.title_history_forum),
+                                        fontSize = 13.sp
+                                    )
+                                },
+                                selected = pagerState.currentPage == 1,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(1)
+                                    }
+                                },
+                                selectedContentColor = ExtendedTheme.colors.onTopBar,
+                                unselectedContentColor = ExtendedTheme.colors.onTopBarSecondary
+                            )
+                        }
+                    }
+                )
+            }
+        ) {
+            ProvideNavigator(navigator = navigator) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    key = { it },
+                    verticalAlignment = Alignment.Top,
+                    userScrollEnabled = true,
+                ) {
+                    if (it == 0) {
+                        HistoryListPage(type = HistoryUtil.TYPE_THREAD)
+                    } else {
+                        HistoryListPage(type = HistoryUtil.TYPE_FORUM)
+                    }
                 }
             }
         }

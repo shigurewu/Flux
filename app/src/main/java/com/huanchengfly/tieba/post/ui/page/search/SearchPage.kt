@@ -1,5 +1,8 @@
 package com.huanchengfly.tieba.post.ui.page.search
 
+import androidx.compose.runtime.key
+import com.huanchengfly.tieba.post.utils.localDataOwner
+import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
@@ -123,8 +126,19 @@ data class SearchPageItem(
 fun SearchPage(
     navigator: DestinationsNavigator,
     viewModel: SearchViewModel = pageViewModel<SearchUiIntent, SearchViewModel>(
-        listOf(SearchUiIntent.Init)
+        listOf(SearchUiIntent.Init),
+        key = "search_" + localDataOwner(LocalAccount.current?.uid),
     ),
+) {
+    key(localDataOwner(LocalAccount.current?.uid)) {
+        SearchPageContent(navigator, viewModel)
+    }
+}
+
+@Composable
+private fun SearchPageContent(
+    navigator: DestinationsNavigator,
+    viewModel: SearchViewModel,
 ) {
     val context = LocalContext.current
     val searchHistories by viewModel.uiState.collectPartialAsState(
@@ -590,7 +604,7 @@ private fun SearchTopBar(
                 )
             }
         },
-        shape = RoundedCornerShape(6.dp)
+        shape = RoundedCornerShape(12.dp)
     )
 }
 

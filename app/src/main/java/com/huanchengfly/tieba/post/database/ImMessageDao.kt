@@ -15,6 +15,9 @@ interface ImMessageDao {
     @Query("SELECT * FROM im_message WHERE uid = :uid AND peerUid = :peerUid ORDER BY createTime DESC, msgId DESC LIMIT 1")
     suspend fun getLatestByPeer(uid: String, peerUid: Long): ImMessage?
 
+    @Query("SELECT MAX(msgId) FROM im_message WHERE uid = :uid AND groupId = :groupId AND isMine = 0 AND msgId > 0")
+    suspend fun getLatestIncomingId(uid: String, groupId: Long): Long?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(messages: List<ImMessage>): List<Long>
 

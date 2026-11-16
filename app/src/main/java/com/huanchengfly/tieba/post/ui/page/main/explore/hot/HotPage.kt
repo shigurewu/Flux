@@ -324,7 +324,8 @@ fun HotPage(
                                         navigator.navigate(
                                             ThreadPageDestination(
                                                 threadId = it.id,
-                                                scrollToReply = true
+                                                scrollToReply = true,
+                                                resumeFromFeed = true,
                                             )
                                         )
                                     },

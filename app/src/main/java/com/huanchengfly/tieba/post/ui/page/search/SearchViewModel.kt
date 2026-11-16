@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.search
 
+import com.huanchengfly.tieba.post.utils.AccountUtil
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import com.huanchengfly.tieba.post.App
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.utils.DatabaseUtil
@@ -36,7 +38,7 @@ class SearchViewModel :
     override fun createInitialState() = SearchUiState()
 
     override fun createPartialChangeProducer(): PartialChangeProducer<SearchUiIntent, SearchPartialChange, SearchUiState> =
-        SearchPartialChangeProducer
+        SearchPartialChangeProducer(localDataOwner(AccountUtil.currentAccount?.uid))
 
     override fun dispatchEvent(partialChange: SearchPartialChange): UiEvent? =
         when (partialChange) {
@@ -57,7 +59,7 @@ class SearchViewModel :
             else -> null
         }
 
-    private object SearchPartialChangeProducer :
+    private class SearchPartialChangeProducer(private val owner: String) :
         PartialChangeProducer<SearchUiIntent, SearchPartialChange, SearchUiState> {
         @OptIn(ExperimentalCoroutinesApi::class)
         override fun toPartialChangeFlow(intentFlow: Flow<SearchUiIntent>): Flow<SearchPartialChange> =
@@ -77,7 +79,7 @@ class SearchViewModel :
         private fun produceInitPartialChange() = flow<SearchPartialChange.Init> {
             emit(
                 SearchPartialChange.Init.Success(
-                    DatabaseUtil.getAllSearchHistories()
+                    DatabaseUtil.getAllSearchHistories(owner)
                 )
             )
         }.catch {
@@ -86,7 +88,7 @@ class SearchViewModel :
 
         private fun produceClearHistoryPartialChange() =
             flow<SearchPartialChange.ClearSearchHistory> {
-                DatabaseUtil.clearSearchHistory()
+                DatabaseUtil.clearSearchHistory(owner)
                 emit(SearchPartialChange.ClearSearchHistory.Success)
             }.catch {
                 emit(SearchPartialChange.ClearSearchHistory.Failure(it.getErrorMessage()))
@@ -94,7 +96,7 @@ class SearchViewModel :
 
         private fun SearchUiIntent.DeleteSearchHistory.producePartialChange() =
             flow<SearchPartialChange.DeleteSearchHistory> {
-                DatabaseUtil.deleteSearchHistory(id)
+                DatabaseUtil.deleteSearchHistory(owner, id)
                 emit(SearchPartialChange.DeleteSearchHistory.Success(id))
             }.catch {
                 emit(SearchPartialChange.DeleteSearchHistory.Failure(it.getErrorMessage()))
@@ -104,7 +106,7 @@ class SearchViewModel :
             flowOf(keyword.trim())
                 .onEach {
                     if (it.isNotBlank()) {
-                        DatabaseUtil.saveSearchHistory(it)
+                        DatabaseUtil.saveSearchHistory(owner, it)
                     }
                 }
                 .map { SearchPartialChange.SubmitKeyword(it) }

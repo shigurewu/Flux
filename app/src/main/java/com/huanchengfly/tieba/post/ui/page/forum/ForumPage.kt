@@ -1,5 +1,6 @@
 package com.huanchengfly.tieba.post.ui.page.forum
 
+import com.huanchengfly.tieba.post.utils.localDataOwner
 import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
@@ -572,12 +573,13 @@ fun ForumPage(
 
     val unlikeDialogState = rememberDialogState()
 
-    LaunchedEffect(forumInfo) {
+    LaunchedEffect(forumInfo, account?.uid) {
         if (forumInfo != null && !context.appPreferences.incognitoMode) {
             val (forum) = forumInfo as ImmutableHolder<ForumInfo>
             HistoryUtil.saveHistory(
                 History(
                     title = context.getString(R.string.title_forum, forum.name),
+                    owner = localDataOwner(account?.uid),
                     timestamp = System.currentTimeMillis(),
                     avatar = forum.avatar,
                     type = HistoryUtil.TYPE_FORUM,

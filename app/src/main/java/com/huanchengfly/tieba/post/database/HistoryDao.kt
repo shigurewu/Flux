@@ -11,17 +11,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface HistoryDao {
-    @Query("SELECT * FROM history ORDER BY timestamp DESC, count DESC LIMIT 100")
-    suspend fun getAll(): List<History>
+    @Query("SELECT * FROM history WHERE owner = :owner ORDER BY timestamp DESC, count DESC LIMIT 100")
+    suspend fun getAll(owner: String): List<History>
 
-    @Query("SELECT * FROM history WHERE type = :type ORDER BY timestamp DESC, count DESC LIMIT :pageSize OFFSET :offset")
-    suspend fun getByType(type: Int, pageSize: Int = 100, offset: Int = 0): List<History>
+    @Query("SELECT * FROM history WHERE owner = :owner AND type = :type ORDER BY timestamp DESC, count DESC LIMIT :pageSize OFFSET :offset")
+    suspend fun getByType(owner: String, type: Int, pageSize: Int = 100, offset: Int = 0): List<History>
 
-    @Query("SELECT * FROM history WHERE type = :type ORDER BY timestamp DESC, count DESC LIMIT :pageSize OFFSET :offset")
-    fun getFlowByType(type: Int, pageSize: Int = 100, offset: Int = 0): Flow<List<History>>
+    @Query("SELECT * FROM history WHERE owner = :owner AND type = :type ORDER BY timestamp DESC, count DESC LIMIT :pageSize OFFSET :offset")
+    fun getFlowByType(owner: String, type: Int, pageSize: Int = 100, offset: Int = 0): Flow<List<History>>
 
-    @Query("SELECT * FROM history WHERE data = :data LIMIT 1")
-    suspend fun getByData(data: String): History?
+    @Query("SELECT * FROM history WHERE owner = :owner AND type = :type AND data = :data LIMIT 1")
+    suspend fun getByData(owner: String, type: Int, data: String): History?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(history: History): Long
@@ -29,15 +29,15 @@ interface HistoryDao {
     @Update
     suspend fun update(history: History)
 
-    @Query("DELETE FROM history WHERE id = :id")
-    suspend fun deleteById(id: Long)
+    @Query("DELETE FROM history WHERE owner = :owner AND id = :id")
+    suspend fun deleteById(owner: String, id: Long)
 
-    @Query("DELETE FROM history")
-    suspend fun deleteAll()
+    @Query("DELETE FROM history WHERE owner = :owner")
+    suspend fun deleteAll(owner: String)
 
     @Transaction
     suspend fun upsert(history: History) {
-        val existing = getByData(history.data)
+        val existing = getByData(history.owner, history.type, history.data)
         if (existing != null) {
             update(
                 history.copy(

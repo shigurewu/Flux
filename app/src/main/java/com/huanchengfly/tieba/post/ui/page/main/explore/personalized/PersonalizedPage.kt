@@ -233,7 +233,8 @@ fun PersonalizedPage(
                             ThreadPageDestination(
                                 it.id,
                                 it.forumId,
-                                scrollToReply = true
+                                scrollToReply = true,
+                                resumeFromFeed = true,
                             )
                         )
                     },
