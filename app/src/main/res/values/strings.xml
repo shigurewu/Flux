@@ -779,7 +779,6 @@
     <string name="thread_resume_nearby">原楼层已不可见，已定位到附近的评论</string>
     <string name="thread_resume_retry">重试续看</string>
     <string name="thread_resume_from_start">从头看</string>
-    <string name="thread_resume_updated">评论状态已更新，最新内容可刷新查看</string>
     <string name="thread_resume_progress">正在恢复阅读位置，已加载 %1$d 页</string>
 </resources>
 

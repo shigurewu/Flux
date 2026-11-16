@@ -851,7 +851,6 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
                             val updated = fresh[old.post.get { id }]
                             if (updated != null) updated else old
                         }.toImmutableList(),
-                        backgroundCommentsUpdated = true,
                     )
                 }
             }
@@ -860,7 +859,6 @@ sealed interface ThreadPartialChange : PartialChange<ThreadUiState> {
                 isRefreshing = false,
                 resumeLoadedPages = null,
                 resumeFromCache = fromResumeCache,
-                backgroundCommentsUpdated = false,
                 isLoadingPrevious = false,
                 loadPreviousFailed = false,
                 isError = false,
@@ -1425,7 +1423,6 @@ data class ThreadUiState(
     val isRefreshing: Boolean = false,
     val resumeLoadedPages: Int? = null,
     val resumeFromCache: Boolean = false,
-    val backgroundCommentsUpdated: Boolean = false,
     val isLoadingMore: Boolean = false,
     val isLoadingPrevious: Boolean = false,
     val loadPreviousFailed: Boolean = false,

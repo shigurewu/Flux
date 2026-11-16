@@ -1637,12 +1637,6 @@ fun ThreadPage(
         }
     }
 
-    val backgroundCommentsUpdated by viewModel.uiState.collectPartialAsState(
-        prop1 = ThreadUiState::backgroundCommentsUpdated, initial = false)
-    LaunchedEffect(backgroundCommentsUpdated) {
-        if (backgroundCommentsUpdated) scaffoldState.snackbarHostState.showSnackbar(
-            context.getString(R.string.thread_resume_updated))
-    }
     val resumeLoadedPages by viewModel.uiState.collectPartialAsState(prop1 = ThreadUiState::resumeLoadedPages, initial = null)
     ProvideNavigator(navigator = navigator) {
         StateScreen(
