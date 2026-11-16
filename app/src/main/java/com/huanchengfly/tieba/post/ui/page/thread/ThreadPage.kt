@@ -116,6 +116,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -212,6 +213,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.PromptDialog
 import com.huanchengfly.tieba.post.ui.widgets.compose.Sizes
 import com.huanchengfly.tieba.post.ui.widgets.compose.TextWithMinWidth
 import com.huanchengfly.tieba.post.ui.widgets.compose.TipScreen
+import com.huanchengfly.tieba.post.ui.widgets.compose.animateCommentJump
 import com.huanchengfly.tieba.post.ui.widgets.compose.scrollToReadingPosition
 import com.huanchengfly.tieba.post.ui.widgets.compose.TitleCentredToolbar
 import com.huanchengfly.tieba.post.ui.widgets.compose.UserHeader
@@ -241,6 +243,7 @@ import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlin.concurrent.thread
@@ -372,6 +375,7 @@ private fun BottomBarCommentBtn(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Button(
+        clickDelayMillis = 0L,
         onClick = onClick,
         shape = RoundedCornerShape(0),
         contentPadding = PaddingValues(horizontal = 4.dp),
@@ -773,7 +777,14 @@ fun ThreadPage(
     }
 
     val lazyListState = rememberLazyListState()
-    var commentReturnKey by remember(threadId, curSortType, isSeeLz) { mutableStateOf<String?>(null) }
+    var commentReturnPosition by remember(threadId, curSortType, isSeeLz) {
+        mutableStateOf<Pair<String, Int>?>(null)
+    }
+    var commentJump by remember(threadId, curSortType, isSeeLz) { mutableStateOf<Job?>(null) }
+    var jumpingToComments by remember(threadId, curSortType, isSeeLz) { mutableStateOf(false) }
+    var commentHeaderHeight by remember { mutableIntStateOf(0) }
+    val commentHeaderFallback = with(LocalDensity.current) { 48.dp.roundToPx() }
+    val commentItemSpacing = with(LocalDensity.current) { 12.dp.roundToPx() }
     val latestRepliesFirst = curSortType == ThreadSortType.SORT_TYPE_DESC && latestPosts.isNotEmpty()
     val replyItemsStart = 3 + if (latestRepliesFirst) latestPosts.size + 1 else 0
     val firstReplyIndex = when {
@@ -921,6 +932,7 @@ fun ThreadPage(
     }
     // 定位楼层时，未加载的目标通过 postId 获取所在页。
     var waitScrollToPostId by remember { mutableStateOf(0L) }
+    var animateCommentResume by remember(threadId, readOwnerUid) { mutableStateOf(false) }
     var loadedScrollIndex by remember { mutableStateOf<Int?>(null) }
     val resumeDensity = androidx.compose.ui.platform.LocalDensity.current.density
     var loadedOffsetPx by remember { mutableStateOf<Int?>(null) }
@@ -954,11 +966,12 @@ fun ThreadPage(
     }
     fun savedOffsetPx(postId: Long): Int? = savedResumeMark?.takeIf { it.postId == postId }
         ?.offsetDp?.takeIf { it.isFinite() }?.let { (it * resumeDensity).toInt() }
-    suspend fun jumpToReply(targetPostId: Long, loadThroughResumeTarget: Boolean = false, retry: Boolean = false) {
+    suspend fun jumpToReply(targetPostId: Long, loadThroughResumeTarget: Boolean = false, retry: Boolean = false, animated: Boolean = false) {
         val index = replyIndex("Post_$targetPostId") ?: replyIndex("LatestPost_$targetPostId")
         if (!retry && index != null && (!loadThroughResumeTarget || !hasPrevious)) {
-            lazyListState.scrollToReadingPosition(index, savedOffsetPx(targetPostId).takeIf { loadThroughResumeTarget })
+            lazyListState.scrollToReadingPosition(index, savedOffsetPx(targetPostId).takeIf { loadThroughResumeTarget }, animated)
         } else {
+            animateCommentResume = animated || (retry && animateCommentResume)
             waitScrollToPostId = targetPostId
             viewModel.send(
                 ThreadUiIntent.Load(
@@ -1017,11 +1030,17 @@ fun ThreadPage(
         if (isRefreshing) return@LaunchedEffect
         val target = if (index == 1) firstReplyIndex else index
         snapshotFlow { lazyListState.layoutInfo.totalItemsCount }.first { it > target }
-        if (AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid) {
-            lazyListState.scrollToReadingPosition(target, loadedOffsetPx)
+        try {
+            if (AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid) {
+                lazyListState.scrollToReadingPosition(target, loadedOffsetPx, animated = animateCommentResume)
+            }
+        } finally {
+            if (loadedScrollIndex == index) {
+                loadedScrollIndex = null
+                loadedOffsetPx = null
+                animateCommentResume = false
+            }
         }
-        loadedScrollIndex = null
-        loadedOffsetPx = null
     }
     val resumeAnchorKey by remember(lazyListState) {
         derivedStateOf { lazyListState.commentPosition().returnKey }
@@ -1707,31 +1726,68 @@ fun ThreadPage(
                         BottomBar(
                             user = user,
                             onClickReply = { quickReplyVisible = true },
-                            onJumpToComments = {
-                                coroutineScope.launch {
-                                    if (isRefreshing || lazyListState.layoutInfo.totalItemsCount <= 1 ||
-                                        lazyListState.isScrollInProgress
-                                    ) return@launch
-                                    val position = lazyListState.commentPosition()
-                                    if (position.inMainPost) {
-                                        val targetIndex = commentReturnKey?.let(::replyIndex)
+                            onJumpToComments = jump@{
+                                if (lazyListState.layoutInfo.totalItemsCount <= 1) return@jump
+                                val previousJump = commentJump
+                                val interruptedJump = previousJump?.isActive == true
+                                val goToComments = if (interruptedJump) !jumpingToComments
+                                else lazyListState.commentPosition().inMainPost
+                                previousJump?.cancel()
+                                jumpingToComments = goToComments
+                                commentJump = coroutineScope.launch {
+                                    if (goToComments) {
+                                        val returnPosition = commentReturnPosition
+                                        val targetIndex = returnPosition?.first?.let(::replyIndex)
                                         val savedPostId = commentResumePostId
-                                        commentReturnKey = null
-                                        commentResumePostId = 0L
-                                        if (targetIndex != null) {
-                                            lazyListState.scrollToReadingPosition(targetIndex)
-                                        } else if (savedPostId > 0L && curSortType == sortType && !isSeeLz &&
-                                            AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid &&
+                                        if (returnPosition != null && targetIndex != null) {
+                                            val headerHeight = commentHeaderHeight.takeIf { it > 0 }
+                                                ?: commentHeaderFallback
+                                            lazyListState.animateCommentJump(
+                                                targetIndex,
+                                                scrollOffset = -returnPosition.second.coerceAtLeast(headerHeight),
+                                            )
+                                        } else if (!isRefreshing && savedPostId > 0L && curSortType == sortType &&
+                                            !isSeeLz && AccountUtil.currentAccount?.uid.orEmpty() == readOwnerUid &&
                                             !context.appPreferences.incognitoMode
                                         ) {
-                                            jumpToReply(savedPostId, loadThroughResumeTarget = true)
+                                            jumpToReply(savedPostId, loadThroughResumeTarget = true, animated = true)
                                         } else {
-                                            lazyListState.scrollToReadingPosition(firstReplyIndex)
+                                            // The pinned header has no reliable scroll offset. Target its next item.
+                                            val index = if (lazyListState.layoutInfo.totalItemsCount > 2) 2 else 1
+                                            val headerHeight = commentHeaderHeight.takeIf { it > 0 }
+                                                ?: commentHeaderFallback
+                                            lazyListState.animateCommentJump(
+                                                index,
+                                                scrollOffset = -(headerHeight + commentItemSpacing),
+                                            )
+                                            if (commentHeaderHeight > 0 && commentHeaderHeight != headerHeight) {
+                                                lazyListState.animateCommentJump(
+                                                    index,
+                                                    scrollOffset = -(commentHeaderHeight + commentItemSpacing),
+                                                )
+                                            }
                                         }
+                                        commentResumePostId = 0L
                                     } else {
                                         commentResumePostId = 0L
-                                        commentReturnKey = position.returnKey
-                                        lazyListState.scrollToItem(0)
+                                        if (!interruptedJump || commentReturnPosition == null) {
+                                            val layout = lazyListState.layoutInfo
+                                            val header = layout.visibleItemsInfo.firstOrNull { it.key == "ThreadHeader" }
+                                            val visibleTop = maxOf(
+                                                layout.viewportStartOffset,
+                                                header?.let { it.offset + it.size } ?: layout.viewportStartOffset,
+                                            )
+                                            val reply = layout.visibleItemsInfo.firstOrNull { item ->
+                                                val key = item.key as? String
+                                                item.size > 0 && item.offset + item.size > visibleTop &&
+                                                    (key?.startsWith("Post_") == true ||
+                                                        key?.startsWith("LatestPost_") == true)
+                                            }
+                                            commentReturnPosition = reply?.let {
+                                                (it.key as String) to (maxOf(it.offset, visibleTop) - layout.viewportStartOffset)
+                                            }
+                                        }
+                                        lazyListState.animateCommentJump(0)
                                     }
                                 }
                             },
@@ -2085,6 +2141,7 @@ fun ThreadPage(
                                     Container {
                                         Row(
                                             modifier = Modifier
+                                                .onSizeChanged { commentHeaderHeight = it.height }
                                                 .background(MaterialTheme.colors.background)
                                                 .padding(8.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -2451,6 +2508,9 @@ private fun BottomBar(
     Column(
         modifier = Modifier.background(ExtendedTheme.colors.threadBottomBar)
     ) {
+        if (ExtendedTheme.colors.isNightMode) {
+            VerticalDivider(thickness = 0.5.dp)
+        }
         Row(
             modifier = Modifier
                 .height(IntrinsicSize.Min)
@@ -2595,6 +2655,13 @@ private fun QuickReplyPanel(
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
             .background(ExtendedTheme.colors.threadBottomBar)
+            .then(
+                if (ExtendedTheme.colors.isNightMode) Modifier.border(
+                    0.5.dp,
+                    ExtendedTheme.colors.divider,
+                    RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                ) else Modifier
+            )
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(

@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BrokenImage
 import androidx.compose.material.icons.rounded.Image
@@ -27,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -42,6 +45,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -55,6 +59,7 @@ import com.github.panpf.sketch.request.DisplayResult
 import com.github.panpf.sketch.stateimage.ThumbnailMemoryCacheStateImage
 import com.github.panpf.sketch.transform.MaskTransformation
 import com.huanchengfly.tieba.post.App
+import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.arch.BaseComposeActivity.Companion.LocalWindowSizeClass
 import com.huanchengfly.tieba.post.goToActivity
 import com.huanchengfly.tieba.post.models.PhotoViewData
@@ -236,6 +241,7 @@ fun NetworkImage(
     contentScale: ContentScale = ContentScale.Fit,
     skipNetworkCheck: Boolean = false,
     enablePreview: Boolean = false,
+    showRetry: Boolean = false,
 ) {
     val context = LocalContext.current
 
@@ -264,11 +270,12 @@ fun NetworkImage(
         }
     }
 
-    val state = rememberAsyncImageState()
-    val showImagePlaceholder by remember {
+    var retryCount by remember(imageUri) { mutableStateOf(0) }
+    val state = key(imageUri, retryCount) { rememberAsyncImageState() }
+    val showImagePlaceholder by remember(state) {
         derivedStateOf { state.result !is DisplayResult.Success }
     }
-    val imageAspectRatio by remember {
+    val imageAspectRatio by remember(state) {
         derivedStateOf {
             with(state.result) {
                 if (this is DisplayResult.Success) imageInfo.height.toFloat() / imageInfo.width
@@ -357,6 +364,14 @@ fun NetworkImage(
             contentScale = contentScale,
             state = state,
         )
+        if (showRetry && shouldLoad && state.result is DisplayResult.Error) {
+            TextButton(
+                onClick = { retryCount++ },
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                Text(stringResource(R.string.button_retry))
+            }
+        }
     }
 }
 

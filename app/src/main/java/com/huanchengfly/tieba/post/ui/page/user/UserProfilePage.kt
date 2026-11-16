@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.user
 
+import androidx.compose.foundation.layout.widthIn
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -748,7 +750,8 @@ private fun UserProfileContentExpanded(
                     modifier = Modifier
                         .padding(paddingValues)
                         .fillMaxHeight()
-                        .fillMaxWidth(0.75f)
+                        .widthIn(max = 1080.dp)
+                        .fillMaxWidth(0.85f)
                         .align(Alignment.TopCenter),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {

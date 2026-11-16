@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.threadstore
 
+import com.huanchengfly.tieba.post.ui.widgets.compose.fluxListCard
+
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
@@ -74,7 +76,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.Avatar
 import com.huanchengfly.tieba.post.ui.widgets.compose.ActionItem
 import com.huanchengfly.tieba.post.ui.widgets.compose.PullRefreshLogoIndicator
 import com.huanchengfly.tieba.post.ui.widgets.compose.BackNavigationIcon
-import com.huanchengfly.tieba.post.ui.widgets.compose.ErrorScreen
+import androidx.compose.material.TextButton
 import com.huanchengfly.tieba.post.ui.widgets.compose.LazyLoad
 import com.huanchengfly.tieba.post.ui.widgets.compose.LoadMoreLayout
 import com.huanchengfly.tieba.post.ui.widgets.compose.LongClickMenu
@@ -84,7 +86,6 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.Sizes
 import com.huanchengfly.tieba.post.ui.widgets.compose.TitleCentredToolbar
 import com.huanchengfly.tieba.post.ui.widgets.compose.UserHeader
 import com.huanchengfly.tieba.post.ui.widgets.compose.states.StateScreen
-import com.huanchengfly.tieba.post.ui.widgets.compose.states.DefaultEmptyScreen
 import com.huanchengfly.tieba.post.utils.StringUtil
 import com.huanchengfly.tieba.post.utils.AccountUtil
 import com.huanchengfly.tieba.post.utils.StringUtil.getUsernameAnnotatedString
@@ -113,6 +114,7 @@ fun ThreadStorePage(
     val uid = AccountUtil.LocalAccount.current?.uid
     var searchOpen by rememberSaveable(uid) { mutableStateOf(false) }
     var query by rememberSaveable(uid) { mutableStateOf("") }
+    var lastPositionedQuery by rememberSaveable(uid) { mutableStateOf("") }
     var searchGeneration by remember(uid) { mutableIntStateOf(0) }
     var searchResult by remember(uid) { mutableStateOf<Result<List<ThreadStoreBean.ThreadStoreInfo>>?>(null) }
     var indexedFavorites by remember(uid) { mutableStateOf(emptyList<ThreadStoreBean.ThreadStoreInfo>()) }
@@ -128,6 +130,7 @@ fun ThreadStorePage(
         focusManager.clearFocus()
         searchOpen = false
         query = ""
+        lastPositionedQuery = ""
         searchResult = null
         indexedFavorites = emptyList()
     }
@@ -231,6 +234,8 @@ fun ThreadStorePage(
                             focusRequester = focusRequester,
                             placeholder = { Text(stringResource(R.string.hint_search_favorites_fields)) },
                             shape = RoundedCornerShape(12.dp),
+                            color = ExtendedTheme.colors.topBarSurface,
+                            showClearWhenUnfocused = true,
                         )
                     }
                 },
@@ -256,15 +261,18 @@ fun ThreadStorePage(
                 .wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth(),
             onReload = refresh,
             errorScreen = {
-                visibleError?.let { ErrorScreen(error = it) }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(stringResource(R.string.tip_favorites_load_failed))
+                    TextButton(onClick = refresh) { Text(stringResource(R.string.btn_reload)) }
+                }
             },
             emptyScreen = {
                 if (hasQuery) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.tip_search_favorites_empty), color = ExtendedTheme.colors.textSecondary)
+                        Text(stringResource(R.string.tip_search_favorites_empty_query, query.trim()), color = ExtendedTheme.colors.textSecondary)
                     }
                 } else {
-                    DefaultEmptyScreen(this)
+                    Text(stringResource(R.string.tip_no_favorites), color = ExtendedTheme.colors.textSecondary)
                 }
             }
         ) {
@@ -275,7 +283,10 @@ fun ThreadStorePage(
 
             val lazyListState = if (hasQuery) searchListState else normalListState
             LaunchedEffect(query) {
-                if (hasQuery) searchListState.scrollToItem(0)
+                if (query != lastPositionedQuery) {
+                    searchListState.scrollToItem(0)
+                    lastPositionedQuery = query
+                }
             }
 
             Box(modifier = Modifier.pullRefresh(pullRefreshState)) {
@@ -335,6 +346,13 @@ fun ThreadStorePage(
                                 }
                             )
                         }
+                        if (!hasQuery && visibleError != null && !refreshing) {
+                            item("favorites_retry") {
+                                TextButton(onClick = refresh, modifier = Modifier.fillMaxWidth()) {
+                                    Text(stringResource(R.string.tip_favorites_retry))
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -363,6 +381,7 @@ private fun StoreItem(
     val isDeleted = remember(info) { info.isDeleted == "1" }
     val textMeasurer = rememberTextMeasurer()
     LongClickMenu(
+        modifier = Modifier.fluxListCard(),
         menuContent = {
             DropdownMenuItem(onClick = onDelete) {
                 Text(text = stringResource(id = R.string.title_collect_on))

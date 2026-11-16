@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.material.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -187,14 +188,20 @@ fun FollowListPage(
                     isLoading = isRefreshing,
                     onReload = ::refresh,
                     errorScreen = {
-                        ErrorScreen(error = error.getOrNull(), actions = {
-                            if (fans) Text(
+                        if (!fans) {
+                            ErrorScreen(error = error.getOrNull())
+                        } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(stringResource(R.string.tip_fans_load_failed))
+                            Text(
                                 text = fansErrorDetail(error.getOrNull()),
                                 color = ExtendedTheme.colors.textSecondary,
                                 fontSize = 12.sp,
-                                modifier = Modifier.padding(top = 12.dp),
+                                modifier = Modifier.padding(top = 8.dp),
                             )
-                        })
+                            TextButton(onClick = ::refresh) {
+                                Text(stringResource(R.string.btn_reload))
+                            }
+                        }
                     },
                 ) {
                     val pullRefreshState = rememberPullRefreshState(

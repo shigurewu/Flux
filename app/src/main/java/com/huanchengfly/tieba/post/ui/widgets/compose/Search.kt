@@ -406,6 +406,7 @@ fun SearchBox(
     color: Color = ExtendedTheme.colors.topBarSurface,
     contentColor: Color = ExtendedTheme.colors.onTopBarSurface,
     elevation: Dp = 0.dp,
+    showClearWhenUnfocused: Boolean = false,
 ) {
     val isKeywordNotEmpty = remember(keyword) { keyword.isNotEmpty() }
     var isFocused by remember { mutableStateOf(false) }
@@ -414,6 +415,9 @@ fun SearchBox(
         shape = shape,
         color = color,
         contentColor = contentColor,
+        border = if (ExtendedTheme.colors.isNightMode) {
+            androidx.compose.foundation.BorderStroke(0.5.dp, ExtendedTheme.colors.divider)
+        } else null,
         elevation = elevation
     ) {
         Row(
@@ -446,7 +450,7 @@ fun SearchBox(
                     }
             )
             appendIcon()
-            AnimatedVisibility(visible = isKeywordNotEmpty && isFocused) {
+            AnimatedVisibility(visible = isKeywordNotEmpty && (isFocused || showClearWhenUnfocused)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)

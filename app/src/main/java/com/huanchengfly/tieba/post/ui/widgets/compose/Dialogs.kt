@@ -2,6 +2,7 @@ package com.huanchengfly.tieba.post.ui.widgets.compose
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -409,6 +410,11 @@ fun Dialog(
                 .background(
                     color = ExtendedTheme.colors.windowBackground,
                     shape = RoundedCornerShape(24.dp)
+                )
+                .then(
+                    if (ExtendedTheme.colors.isNightMode) Modifier.border(
+                        0.5.dp, ExtendedTheme.colors.divider, RoundedCornerShape(24.dp)
+                    ) else Modifier
                 )
                 .padding(vertical = 24.dp),
         ) {

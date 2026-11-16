@@ -178,7 +178,8 @@ data class PicContentRender(
                 .fillMaxWidth(widthFraction)
                 .aspectRatio(if (width > 0 && height > 0) width * 1f / height else 1f),
             photoViewData = photoViewData,
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            showRetry = true,
         )
     }
 
@@ -197,7 +198,8 @@ data class PicContentRender(
                     else 1f
                 ),
             photoViewData = photoViewData,
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            showRetry = true,
         )
     }
 

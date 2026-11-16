@@ -1,5 +1,9 @@
 package com.huanchengfly.tieba.post.ui.page.main.notifications
 
+import com.huanchengfly.tieba.post.ui.widgets.compose.fluxListCard
+
+import androidx.compose.ui.platform.LocalConfiguration
+
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import android.app.NotificationManager
@@ -232,11 +236,12 @@ private fun HubRow(
     showDot: Boolean,
     onClick: () -> Unit,
 ) {
+    val compactWindow = LocalConfiguration.current.screenWidthDp < 360
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fluxListCard()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = if (compactWindow) 12.dp else 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {

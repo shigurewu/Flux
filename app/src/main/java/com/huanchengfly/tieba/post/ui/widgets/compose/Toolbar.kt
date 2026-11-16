@@ -212,7 +212,8 @@ fun BackNavigationIcon(onBackPressed: () -> Unit) {
         IconButton(onClick = onBackPressed) {
             Icon(
                 imageVector = ImageVector.vectorResource(id = R.drawable.ic_round_arrow_back),
-                contentDescription = stringResource(id = R.string.button_back)
+                contentDescription = stringResource(id = R.string.button_back),
+                modifier = Modifier.size(24.dp)
             )
         }
     }

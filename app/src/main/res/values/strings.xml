@@ -7,6 +7,7 @@
     <string name="hint_search_favorites">搜索收藏</string>
     <string name="hint_search_favorites_fields">帖子标题、吧名或作者</string>
     <string name="button_clear_favorites_search">清空搜索</string>
+    <string name="tip_search_favorites_empty_query">没有找到与“%1$s”匹配的收藏</string>
     <string name="tip_search_favorites_empty">没有找到匹配的收藏</string>
     <string name="hint_search">发现更多</string>
     <string name="hint_search_in_ba">在 %1$s 吧内搜索</string>
@@ -147,6 +148,11 @@
     <string name="my_info_service_center">服务中心</string>
     <string name="toast_success">成功</string>
     <string name="title_report">举报</string>
+    <string name="tip_fans_load_failed">粉丝列表加载失败</string>
+    <string name="tip_favorites_load_failed">收藏加载失败</string>
+    <string name="tip_favorites_retry">收藏刷新失败，点击重试</string>
+    <string name="tip_no_history">暂无浏览记录</string>
+    <string name="tip_no_favorites">暂无收藏</string>
     <string name="tip_empty">这里什么都没有</string>
     <string name="title_auto_sign">自动签到</string>
     <string name="summary_auto_sign">开启后，将每天定时运行一键签到</string>

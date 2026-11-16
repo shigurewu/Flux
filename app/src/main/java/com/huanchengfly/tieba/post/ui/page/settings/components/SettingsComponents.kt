@@ -1,4 +1,6 @@
-﻿package com.huanchengfly.tieba.post.ui.page.settings.components
+package com.huanchengfly.tieba.post.ui.page.settings.components
+
+import androidx.compose.ui.platform.LocalConfiguration
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -98,9 +100,11 @@ internal fun SettingRow(
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val compactWindow = LocalConfiguration.current.screenWidthDp < 360
+    val horizontalPadding = if (compactWindow) 12.dp else 16.dp
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(horizontalPadding),
         modifier = Modifier
             .fillMaxWidth()
             .alpha(if (enabled) 1f else 0.5f)
@@ -110,7 +114,7 @@ internal fun SettingRow(
                 enabled = enabled && onClick != null,
                 onClick = { onClick?.invoke() }
             )
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
+            .padding(horizontal = horizontalPadding, vertical = 12.dp)
     ) {
         Icon(
             imageVector = icon,

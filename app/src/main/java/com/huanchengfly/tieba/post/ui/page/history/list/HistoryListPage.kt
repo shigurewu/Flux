@@ -1,5 +1,7 @@
 package com.huanchengfly.tieba.post.ui.page.history.list
 
+import com.huanchengfly.tieba.post.ui.widgets.compose.fluxListCard
+
 import com.huanchengfly.tieba.post.utils.AccountUtil.LocalAccount
 import com.huanchengfly.tieba.post.utils.localDataOwner
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -112,6 +114,15 @@ fun HistoryListPage(
                     .fillMaxSize(),
                 state = lazyListState
             ) {
+                if (!hasMore && todayHistoryData.isEmpty() && beforeHistoryData.isEmpty()) {
+                    item("history_empty") {
+                        Text(
+                            text = stringResource(R.string.tip_no_history),
+                            color = ExtendedTheme.colors.textSecondary,
+                            modifier = Modifier.padding(24.dp),
+                        )
+                    }
+                }
                 if (todayHistoryData.isNotEmpty()) {
                     stickyHeader(key = "TodayHistoryHeader") {
                         Column(
@@ -215,6 +226,7 @@ private fun HistoryItem(
 ) {
     val menuState = rememberMenuState()
     LongClickMenu(
+        modifier = Modifier.fluxListCard(),
         menuContent = {
             DropdownMenuItem(onClick = {
                 onDelete(info)
